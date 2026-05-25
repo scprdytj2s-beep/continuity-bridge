@@ -569,7 +569,7 @@ def _serial_verify(serial: str):
         norm   = serial.upper().replace(' ', '')
         if norm in _revoked_serials:
             return False, expiry, name, "Licentie ingetrokken."
-        if _date.today() > expiry:
+        if _date.today() >= expiry:
             return False, expiry, name, f"Verlopen op {expiry.strftime('%d-%m-%Y')}."
         return True, expiry, name, f"Geldig t/m {expiry.strftime('%d-%m-%Y')}"
     except Exception:
