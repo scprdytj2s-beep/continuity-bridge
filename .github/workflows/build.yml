@@ -115,8 +115,8 @@ jobs:
           pip install pyinstaller pdfplumber pillow
 
       - name: Convert PNG to ICO
+        shell: python
         run: |
-          python - <<'EOF'
           from PIL import Image
           img = Image.open("AppIcon.png").convert("RGBA")
           sizes = [(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)]
@@ -124,7 +124,6 @@ jobs:
           imgs[0].save("AppIcon.ico", format="ICO", sizes=sizes,
                        append_images=imgs[1:])
           print("ICO created")
-          EOF
 
       - name: Build EXE
         run: pyinstaller continuity_bridge_win.spec --clean --noconfirm
