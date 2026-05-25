@@ -1,0 +1,157 @@
+name: Build Continuity Bridge
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  # ── macOS Silicon (Apple M-series) ─────────────────────────────────────────
+  build-macos-silicon:
+    name: macOS Silicon (arm64)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pyinstaller pdfplumber pillow
+
+      - name: Build app bundle
+        run: pyinstaller continuity_bridge.spec --clean --noconfirm
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg || true
+          create-dmg \
+            --volname "Continuity Bridge" \
+            --volicon "AppIcon.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "Continuity Bridge.app" 175 190 \
+            --hide-extension "Continuity Bridge.app" \
+            --app-drop-link 425 190 \
+            "ContinuityBridge-Silicon.dmg" \
+            "dist/Continuity Bridge.app" \
+          || hdiutil create -volname "Continuity Bridge" \
+               -srcfolder "dist/Continuity Bridge.app" \
+               -ov -format UDZO \
+               "ContinuityBridge-Silicon.dmg"
+
+      - name: Upload Silicon DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: ContinuityBridge-Silicon
+          path: ContinuityBridge-Silicon.dmg
+
+  # ── macOS Intel (x86_64) ───────────────────────────────────────────────────
+  build-macos-intel:
+    name: macOS Intel (x86_64)
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pyinstaller pdfplumber pillow
+
+      - name: Build app bundle
+        run: pyinstaller continuity_bridge.spec --clean --noconfirm
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg || true
+          create-dmg \
+            --volname "Continuity Bridge" \
+            --volicon "AppIcon.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "Continuity Bridge.app" 175 190 \
+            --hide-extension "Continuity Bridge.app" \
+            --app-drop-link 425 190 \
+            "ContinuityBridge-Intel.dmg" \
+            "dist/Continuity Bridge.app" \
+          || hdiutil create -volname "Continuity Bridge" \
+               -srcfolder "dist/Continuity Bridge.app" \
+               -ov -format UDZO \
+               "ContinuityBridge-Intel.dmg"
+
+      - name: Upload Intel DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: ContinuityBridge-Intel
+          path: ContinuityBridge-Intel.dmg
+
+  # ── Windows (x86_64) ───────────────────────────────────────────────────────
+  build-windows:
+    name: Windows (x86_64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pyinstaller pdfplumber pillow
+
+      - name: Convert PNG to ICO
+        run: |
+          python - <<'EOF'
+          from PIL import Image
+          img = Image.open("AppIcon.png").convert("RGBA")
+          sizes = [(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)]
+          imgs = [img.resize(s, Image.LANCZOS) for s in sizes]
+          imgs[0].save("AppIcon.ico", format="ICO", sizes=sizes,
+                       append_images=imgs[1:])
+          print("ICO created")
+          EOF
+
+      - name: Build EXE
+        run: pyinstaller continuity_bridge_win.spec --clean --noconfirm
+
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: ContinuityBridge-Windows
+          path: dist/ContinuityBridge.exe
+
+  # ── Release: attach all artifacts ─────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [build-macos-silicon, build-macos-intel, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ContinuityBridge-Silicon/ContinuityBridge-Silicon.dmg
+            ContinuityBridge-Intel/ContinuityBridge-Intel.dmg
+            ContinuityBridge-Windows/ContinuityBridge.exe
+          generate_release_notes: true
