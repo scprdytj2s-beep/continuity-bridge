@@ -324,9 +324,12 @@ def parse_pdf(pdf_path, log):
                         if desc:
                             cur_desc = desc
 
-                # Clips extraheren — cirkel staat VOOR de clip-code
+                # Clips extraheren — cirkel staat VOOR de clip-code.
+                # Optionele timecode (bv. "00:01:23" of "00:01:23:12") voor
+                # de cirkel wordt getolereerd; pdfplumber plaatst die soms
+                # vóór het ✓-symbool als de notes-kolom een TC bevat.
                 for m in re.finditer(
-                    r"(?:^|\n)(?:\d{3,4}\s+)?(?:\d+[A-Z0-9]*)\s+([✓\-X])\s+(A\d{3}C\d{3})(.*?)(?=\n|$)",
+                    r"(?:^|\n)(?:\d{3,4}\s+)?(?:\d+[A-Z0-9]*)\s+(?:\d{1,2}(?::\d{2})+\s+)?([✓\-X])\s+(A\d{3}C\d{3})(.*?)(?=\n|$)",
                     text, re.MULTILINE
                 ):
                     ch   = m.group(1)
@@ -357,7 +360,8 @@ def parse_pdf(pdf_path, log):
                 if dm: description = dm.group(1).strip()
                 tm = re.search(r"Take\s+Clip\s+Circle\s+Length\s+Take comment\s*\n(.*?)Shot Description:", text, re.DOTALL)
                 if not tm: continue
-                for m in re.finditer(r"^(\d+[A-Z]*|[A-Z]+)\s+(A\d{3}C\d{3})\s+([✓\-X])\s*(.*)", tm.group(1), re.MULTILINE):
+                # Optionele timecode vóór cirkel (pdfplumber-extractie artefact)
+                for m in re.finditer(r"^(\d+[A-Z]*|[A-Z]+)\s+(A\d{3}C\d{3})\s+(?:\d{1,2}(?::\d{2})+\s+)?([✓\-X])\s*(.*)", tm.group(1), re.MULTILINE):
                     clip   = m.group(2)
                     ch     = m.group(3)
                     rest   = m.group(4).strip()
@@ -514,7 +518,7 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto"):
 
 VERSION       = "1.0 (Beta)"
 GITHUB_REPO   = "scprdytj2s-beep/continuity-bridge"
-RELEASES_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+RELEASES_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases/latest"
 
 # ---------------------------------------------------------------------------
@@ -736,7 +740,10 @@ class App:
                     req = urllib.request.Request(RELEASES_URL,
                           headers={"User-Agent": "ContinuityBridge"})
                     with urllib.request.urlopen(req, timeout=5) as r:
-                        data = json.loads(r.read())
+                        releases = json.loads(r.read())
+                    # /releases geeft een lijst terug (incl. pre-releases),
+                    # gepubliceerd op datum gesorteerd. Pak de eerste (meest recent).
+                    data = releases[0] if isinstance(releases, list) and releases else {}
                     latest = data.get("tag_name", "").lstrip("v")
                     def _vt(v):
                         import re as _re
