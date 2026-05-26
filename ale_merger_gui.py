@@ -33,7 +33,7 @@ except ImportError:
 # PDF PARSER
 # ---------------------------------------------------------------------------
 
-def parse_pdf(pdf_path, log):
+def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
     clips        = {}
     use_new_fmt  = False   # wordt bijgehouden over pagina's heen
     cur_scene    = ""
@@ -75,13 +75,19 @@ def parse_pdf(pdf_path, log):
                         description = desc_raw
 
                 # Algemene Comment onderaan pagina
-                comment_m = re.search(r"Comment:\s*(.+)", text)
+                # "Comment:" staat vaak op eigen regel; volgende regels zijn de tekst
                 general_note = ""
-                if comment_m:
-                    _gn = comment_m.group(1).strip()
-                    # Paginanummer onderaan de pagina niet als comment overnemen
-                    if not re.match(r"^\d+$", _gn):
+                _cm = re.search(r"Comment:\s*\n(.*?)(?=\n\s*\n|\Z)", text, re.DOTALL)
+                if _cm:
+                    _gn = _cm.group(1).strip().replace("\n", " ")
+                    if _gn and not re.match(r"^\d+$", _gn):
                         general_note = _gn
+                if not general_note:
+                    _cm2 = re.search(r"Comment:\s+(.+)", text)
+                    if _cm2:
+                        _gn = _cm2.group(1).strip()
+                        if not re.match(r"^\d+$", _gn):
+                            general_note = _gn
 
                 # PU-detectie: zoek "PU" kolomkop om x-positie dynamisch te bepalen
                 # (hardcoded x≈73 werkt niet voor alle PDFs)
@@ -168,6 +174,7 @@ def parse_pdf(pdf_path, log):
                                                 and lengte_idx > notes_idx) else None
 
                     pending_clip_a = pending_clip_b = pending_notes = None
+                    pending_is_pu  = False
 
                     for row in tbl[header_row_idx + 1:]:
                         if not row: continue
@@ -190,12 +197,16 @@ def parse_pdf(pdf_path, log):
                             if pending_clip_a not in clips:
                                 clips[pending_clip_a] = {"circle": "", "scene": scene,
                                                          "description": description,
-                                                         "take_notes": pending_notes or general_note}
+                                                         "take_notes": pending_notes or general_note,
+                                                         "page_note": general_note,
+                                                         "is_pu": pending_is_pu}
                         if pending_clip_b:
                             if pending_clip_b not in clips:
                                 clips[pending_clip_b] = {"circle": "", "scene": scene,
                                                          "description": description,
-                                                         "take_notes": pending_notes or general_note}
+                                                         "take_notes": pending_notes or general_note,
+                                                         "page_note": general_note,
+                                                         "is_pu": pending_is_pu}
 
                         clip_a = (row[clip_a_idx] or "").strip() if clip_a_idx < len(row) else ""
                         clip_b = (row[clip_b_idx] or "").strip() if clip_b_idx is not None and clip_b_idx < len(row) else ""
@@ -209,29 +220,31 @@ def parse_pdf(pdf_path, log):
                         else:
                             notes = ""
                         # Lengte-waarden die per ongeluk in Notes terechtkomen negeren
-                        # (bijv. "1", "1m 20s", "40s", "50s")
                         if re.match(r"^\d+(?:\s*[ms]\w*(?:\s+\d+\s*[ms]\w*)?)?$", notes, re.I):
                             notes = ""
-                        # PU-vinkje: "(PU)" voor de noot
-                        if _is_pu(take_num):
-                            notes = ("(PU) " + notes).strip()
 
                         pending_clip_a = (kaart_a + clip_a) if clip_a else None
                         pending_clip_b = (kaart_b + clip_b) if clip_b else None
                         pending_notes  = notes
+                        pending_is_pu  = write_pu and _is_pu(take_num)
 
                     # Laatste take opslaan
                     if pending_clip_a:
                         if pending_clip_a not in clips:
                             clips[pending_clip_a] = {"circle": "", "scene": scene,
                                                      "description": description,
-                                                     "take_notes": pending_notes or general_note}
+                                                     "take_notes": pending_notes or general_note,
+                                                     "page_note": general_note,
+                                                     "is_pu": pending_is_pu}
                     if pending_clip_b:
                         if pending_clip_b not in clips:
                             clips[pending_clip_b] = {"circle": "", "scene": scene,
                                                      "description": description,
-                                                     "take_notes": pending_notes or general_note}
+                                                     "take_notes": pending_notes or general_note,
+                                                     "page_note": general_note,
+                                                     "is_pu": pending_is_pu}
                     pending_clip_a = pending_clip_b = pending_notes = None
+                    pending_is_pu  = False
                 continue  # Haantjes pagina verwerkt
 
             # ── BFF formaat: Continuïteitsrapport ──────────────────────────
@@ -281,6 +294,182 @@ def parse_pdf(pdf_path, log):
                             clips[key] = {"circle": "", "scene": scene,
                                           "description": description, "take_notes": notes}
                 continue  # BFF pagina verwerkt, volgende pagina
+
+            # ── LVB / Millstreet format ────────────────────────────────────
+            # Continuiteitsrapport met CARD Nr. + tabel TAKE/PU/CLIP#/RATING/AFG
+            # Sterren in RATING-kolom zijn vector-curves (5-sterren systeem).
+            # Twee cameras A en B; clips: A_XXXXCYYY + B_XXXXCYYY.
+            # Algemene Sound Notes en Camera Notes gaan naar aparte kolommen.
+            if "CONTINUITEITSRAPPORT" in text and "CARD Nr." in text and "CLIP #" in text:
+                try:
+                    tbls = page.find_tables()
+                    if len(tbls) < 3:
+                        continue
+
+                    # ── Slate + Scene (tabel 0) ──
+                    slate = ""
+                    scene = ""
+                    for row in tbls[0].extract():
+                        if not row: continue
+                        # Slate: numerieke waarde in kolom 7
+                        if len(row) > 7 and row[7] and re.match(r'^\d{3,4}[A-Za-z]?$', (row[7] or "").strip()):
+                            slate = row[7].strip()
+                        # Scene: kolom 2, niet de koptekst of CARD-rij
+                        if len(row) > 2 and row[2] and row[2] not in ("SCENE", "DATUM", "SCÈNE"):
+                            val = row[2].strip()
+                            if val and not re.match(r'^\d{1,2}-\d{1,2}-\d{4}$', val) \
+                                    and "CARD" not in val:
+                                scene = val
+
+                    if not slate:
+                        continue
+
+                    # ── Card nummers (alle tabellen, ook tabel 0) ──
+                    card_a = ""
+                    card_b = ""
+                    for tbl in tbls:
+                        for row in tbl.extract():
+                            if not row: continue
+                            row_str = " ".join(str(c or "") for c in row)
+                            if "CARD" in row_str and "Nr" in row_str:
+                                for cell in row:
+                                    if not cell: continue
+                                    cell = cell.strip()
+                                    if re.match(r'^A\d+$', cell):
+                                        card_a = cell[1:]   # "A19" → "19"
+                                    elif re.match(r'^B\d+$', cell):
+                                        card_b = cell[1:]   # "B17" → "17"
+                                break
+                        if card_a or card_b:
+                            break
+
+                    # ── Sound + Camera notes ──
+                    sound_note = ""
+                    camera_note = ""
+                    for tbl in tbls:
+                        ext = tbl.extract()
+                        for ri, row in enumerate(ext):
+                            if not row: continue
+                            if "SOUND NOTES" in " ".join(str(c or "") for c in row):
+                                # Verwerk alle rijen na de header tot de handtekening
+                                for nr in ext[ri + 1:]:
+                                    if not nr: continue
+                                    sn = (nr[0] or "").strip()
+                                    cn = (nr[1] or "").strip() if len(nr) > 1 else ""
+                                    # Stop bij handtekening-rij
+                                    if re.search(r'Script Supervisor|Assistant Director', sn + cn, re.I):
+                                        break
+                                    if sn:
+                                        sound_note = (sound_note + " " + sn).strip()
+                                    if cn:
+                                        camera_note = (camera_note + " " + cn).strip()
+                                break
+
+                    # ── Take tabel ──
+                    take_tbl = None
+                    for tbl in tbls:
+                        for row in tbl.extract()[:3]:
+                            if row and any("TAKE" in str(c) for c in row if c) \
+                                    and any("CLIP" in str(c) for c in row if c):
+                                take_tbl = tbl
+                                break
+                        if take_tbl:
+                            break
+
+                    if take_tbl is None:
+                        continue
+
+                    take_extract = take_tbl.extract()
+
+                    def _make_clip_key(letter, card_num, clip_num):
+                        try:
+                            return f"{letter}_{int(card_num):04d}C{int(clip_num):03d}"
+                        except (ValueError, TypeError):
+                            return None
+
+                    for ri, row_data in enumerate(take_extract):
+                        if ri == 0: continue          # header
+                        if not row_data or not row_data[0]: continue
+                        take_str = (row_data[0] or "").strip()
+                        if not re.match(r'^\d+$', take_str): continue
+
+                        clip_raw = re.sub(r'\s+', '', row_data[2] or "")
+                        if not clip_raw or "?" in clip_raw:
+                            continue
+
+                        afg_val   = (row_data[5] or "").strip() if len(row_data) > 5 else ""
+                        opmerking = (row_data[6] or "").strip() if len(row_data) > 6 else ""
+                        circle    = ""
+                        is_afg    = write_afg and "AFG" in afg_val.upper()
+
+                        # ── Sterren tellen via vector-curves ──
+                        star_count = 0
+                        try:
+                            row_cells = take_tbl.rows[ri].cells
+                            if len(row_cells) > 4 and row_cells[4]:
+                                rx0, rtop, rx1, rbottom = row_cells[4]
+                                crop = page.crop((rx0, rtop, rx1, rbottom))
+                                star_curves = [c for c in crop.curves
+                                               if len(c.get('pts', [])) >= 10 and c.get('fill')]
+                                star_count = len(star_curves)
+                        except Exception:
+                            pass
+
+                        clip_info = {
+                            "circle":       circle,
+                            "scene":        scene,
+                            "description":  "",
+                            "take_notes":   opmerking,
+                            "sound_notes":  sound_note,
+                            "camera_notes": camera_note,
+                            "stars":        str(star_count) if star_count > 0 else "",
+                            "is_afg":       is_afg,
+                        }
+
+                        # ── Clip keys aanmaken ──
+                        # Merge: notes/stars overschrijven bestaande lege waarden
+                        def _lvb_set(key, info):
+                            if not key: return
+                            if key not in clips:
+                                clips[key] = dict(info)
+                            else:
+                                ex = clips[key]
+                                if info.get("take_notes") and not ex.get("take_notes"):
+                                    ex["take_notes"] = info["take_notes"]
+                                if info.get("stars") and (
+                                        not ex.get("stars") or
+                                        int(info["stars"]) > int(ex["stars"] or 0)):
+                                    ex["stars"] = info["stars"]
+
+                        if "/" in clip_raw:
+                            m = re.match(r'C(\d+)/(\d+)', clip_raw)
+                            if m:
+                                a_num, b_num = m.group(1), m.group(2)
+                                if card_a:
+                                    _lvb_set(_make_clip_key("A", card_a, a_num), clip_info)
+                                if card_b:
+                                    _lvb_set(_make_clip_key("B", card_b, b_num), clip_info)
+                        else:
+                            m = re.match(r'C(\d+)', clip_raw)
+                            if m:
+                                num = m.group(1)
+                                if card_a and not card_b:
+                                    _lvb_set(_make_clip_key("A", card_a, num), clip_info)
+                                elif card_b and not card_a:
+                                    _lvb_set(_make_clip_key("B", card_b, num), clip_info)
+                                else:
+                                    # Eén clipnummer, beide cameras aanwezig:
+                                    # "Alleen B" in opmerking → camera B; anders → camera A
+                                    if re.search(r'\bAlleen\s+B\b', opmerking, re.I):
+                                        if card_b:
+                                            _lvb_set(_make_clip_key("B", card_b, num), clip_info)
+                                    else:
+                                        if card_a:
+                                            _lvb_set(_make_clip_key("A", card_a, num), clip_info)
+
+                except Exception as _e:
+                    log(f"Fout bij LVB-pagina {page.page_number}: {_e}", "warn")
+                continue  # LVB pagina verwerkt
 
             # ── Waste Clips ────────────────────────────────────────────────
             if "Waste Clips" in text:
@@ -383,7 +572,19 @@ def parse_pdf(pdf_path, log):
 # ALE VERWERKER
 # ---------------------------------------------------------------------------
 
-def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto"):
+def _cw_add(cw_dict, idx, val):
+    """Voeg tekst toe aan col-write dict; zelfde idx → later samenvoegen met ' / '."""
+    if idx is not None and val:
+        v = str(val).replace("\n", " ").replace("\r", " ").strip()
+        if v:
+            cw_dict.setdefault(idx, []).append(v)
+
+
+def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", rating_col="Auto",
+                sound_notes_col="Auto", camera_notes_col="Auto",
+                pu_col="Auto", pu_position="voor",
+                afg_col="Auto", afg_position="voor",
+                general_notes_col="Auto"):
     with open(ale_path, "rb") as f:
         raw = f.read()
 
@@ -414,42 +615,130 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto"):
     def idx(name):
         return col_headers.index(name) if name in col_headers else None
 
-    name_idx   = idx("Name")
-    tape_idx   = idx("Tape")
-    rating_idx = idx("Rating")
-    scene_idx  = idx("Scene")       # alleen bijwerken als al aanwezig
-    desc_idx   = idx("Description") # alleen bijwerken als al aanwezig
+    name_idx  = idx("Name")
+    tape_idx  = idx("Tape")
+    scene_idx = idx("Scene")       # alleen bijwerken als al aanwezig
+    desc_idx  = idx("Description") # alleen bijwerken als al aanwezig
 
-    # Notes-kolom: gebruik keuze van gebruiker, anders auto-detectie
-    if notes_col and notes_col != "Auto":
-        take_notes_idx = idx(notes_col)
-        if take_notes_idx is None:
-            # Kolom bestaat nog niet in ALE — voeg toe
-            col_headers.append(notes_col)
-            take_notes_idx = len(col_headers) - 1
-            log(f"Kolom '{notes_col}' niet gevonden — toegevoegd aan ALE.", "info")
+    # Rating-kolom: gebruik keuze van gebruiker, anders auto-detectie
+    if rating_col and rating_col != "Auto":
+        rating_idx = idx(rating_col)
+        if rating_idx is None:
+            col_headers.append(rating_col)
+            rating_idx = len(col_headers) - 1
+            log(f"Kolom '{rating_col}' niet gevonden — toegevoegd aan ALE.", "info")
     else:
-        take_notes_idx = next(
-            (idx(c) for c in ("Comment", "Take_notes", "Note", "Notes", "Comments")
+        rating_idx = next(
+            (idx(c) for c in ("Rating", "Circle", "Score", "Stars")
              if idx(c) is not None),
             None
         )
-        if take_notes_idx is None:
-            # Geen geschikte kolom gevonden — voeg Comment toe
-            col_headers.append("Comment")
-            take_notes_idx = len(col_headers) - 1
-            log("Geen notes-kolom gevonden — 'Comment' toegevoegd aan ALE.", "info")
+        if rating_idx is None:
+            col_headers.append("Rating")
+            rating_idx = len(col_headers) - 1
+            log("Geen rating-kolom gevonden — 'Rating' toegevoegd aan ALE.", "info")
+
+    if rating_idx is not None:
+        log(f"Rating → kolom '{col_headers[rating_idx]}'", "info")
+
+    # Notes-kolom: gebruik keuze van gebruiker, anders auto-detectie
+    take_notes_idx = None
+    if notes_col not in ("Uit", ""):
+        if notes_col and notes_col != "Auto":
+            take_notes_idx = idx(notes_col)
+            if take_notes_idx is None:
+                col_headers.append(notes_col)
+                take_notes_idx = len(col_headers) - 1
+                log(f"Kolom '{notes_col}' niet gevonden — toegevoegd aan ALE.", "info")
+        else:
+            take_notes_idx = next(
+                (idx(c) for c in ("Comment", "Take_notes", "Note", "Notes", "Comments")
+                 if idx(c) is not None),
+                None
+            )
+            if take_notes_idx is None:
+                col_headers.append("Comment")
+                take_notes_idx = len(col_headers) - 1
+                log("Geen notes-kolom gevonden — 'Comment' toegevoegd aan ALE.", "info")
 
     if take_notes_idx is not None:
         log(f"Notes → kolom '{col_headers[take_notes_idx]}'", "info")
+
+    # LVB-kolommen: alleen toevoegen als er clip-data is met LVB-velden
+    has_lvb = any(
+        d.get("stars") or d.get("sound_notes") or d.get("camera_notes")
+        for d in clip_data.values()
+    )
+    stars_idx = sound_idx = cam_idx = None
+    if has_lvb:
+        # Stars altijd toevoegen
+        if "Stars" not in col_headers:
+            col_headers.append("Stars")
+            log("Kolom 'Stars' toegevoegd aan ALE (LVB-formaat).", "info")
+        stars_idx = col_headers.index("Stars")
+
+        # Sound Notes kolom
+        _sn_col = None if sound_notes_col in ("Uit", "") else (
+            "Sound_Notes" if sound_notes_col in ("Auto", None) else sound_notes_col)
+        if _sn_col:
+            if _sn_col not in col_headers:
+                col_headers.append(_sn_col)
+                log(f"Kolom '{_sn_col}' toegevoegd aan ALE (Sound Notes).", "info")
+            sound_idx = col_headers.index(_sn_col)
+
+        # Camera Notes kolom
+        _cn_col = None if camera_notes_col in ("Uit", "") else (
+            "Camera_Notes" if camera_notes_col in ("Auto", None) else camera_notes_col)
+        if _cn_col:
+            if _cn_col not in col_headers:
+                col_headers.append(_cn_col)
+                log(f"Kolom '{_cn_col}' toegevoegd aan ALE (Camera Notes).", "info")
+            cam_idx = col_headers.index(_cn_col)
+
+    # PU-kolom: apart van has_lvb — PU kan ook in Haantjes/BFF-formaat voorkomen
+    # Gebruik dezelfde kolom als take_notes_idx wanneer "Auto"
+    pu_idx = None
+    has_pu = any(d.get("is_pu") for d in clip_data.values())
+    if has_pu:
+        _pu_col_name = None if pu_col in ("Uit", "") else (
+            None if pu_col in ("Auto", None) else pu_col)
+        if _pu_col_name is None and pu_col not in ("Uit", ""):
+            pu_idx = take_notes_idx
+        elif _pu_col_name:
+            if _pu_col_name not in col_headers:
+                col_headers.append(_pu_col_name)
+                log(f"Kolom '{_pu_col_name}' toegevoegd aan ALE (PU).", "info")
+            pu_idx = col_headers.index(_pu_col_name)
+
+    # AFG-kolom: zelfde logica als PU
+    afg_idx = None
+    has_afg = any(d.get("is_afg") for d in clip_data.values())
+    if has_afg:
+        _afg_col_name = None if afg_col in ("Uit", "") else (
+            None if afg_col in ("Auto", None) else afg_col)
+        if _afg_col_name is None and afg_col not in ("Uit", ""):
+            afg_idx = take_notes_idx
+        elif _afg_col_name:
+            if _afg_col_name not in col_headers:
+                col_headers.append(_afg_col_name)
+                log(f"Kolom '{_afg_col_name}' toegevoegd aan ALE (AFG).", "info")
+            afg_idx = col_headers.index(_afg_col_name)
+
+    # Algemene opmerkingen-kolom (Haantjes Comment-veld onderaan pagina)
+    gen_notes_idx = None
+    has_gen = any(d.get("page_note") for d in clip_data.values())
+    if has_gen and general_notes_col not in ("Uit", ""):
+        _gn_col = "Camera_Notes" if general_notes_col in ("Auto", None) else general_notes_col
+        if _gn_col not in col_headers:
+            col_headers.append(_gn_col)
+            log(f"Kolom '{_gn_col}' toegevoegd aan ALE (Algemene opmerkingen).", "info")
+        gen_notes_idx = col_headers.index(_gn_col)
 
     # Alleen de kolommen die wij hebben toegevoegd krijgen een leeg veld per rij
     new_cols = col_headers[n_orig:]
 
     if name_idx is None:
         raise ValueError("Geen 'Name' kolom gevonden in ALE.")
-    if rating_idx is None:
-        log("Geen 'Rating' kolom in ALE — rating wordt overgeslagen.", "info")
 
     log(f"ALE kolommen ({len(col_headers)}): {', '.join(col_headers)}", "info")
 
@@ -492,16 +781,48 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto"):
             tape_key = parts[tape_idx][:8]
             info = clip_data.get(tape_key)
 
+        # LVB-formaat: ALE-naam "A_0019C001_260424_141158_p1CNK" → prefix "A_0019C001"
+        if info is None:
+            clip_name = parts[name_idx]
+            for key in clip_data:
+                if clip_name == key or clip_name.startswith(key + "_"):
+                    info = clip_data[key]
+                    break
+
         if info:
             matched += 1
-            if write_rating and rating_idx is not None and info["circle"]:
-                parts[rating_idx] = info["circle"]
-            if take_notes_idx is not None and info["take_notes"]:
-                parts[take_notes_idx] = info["take_notes"].replace("\n", " ").replace("\r", " ")
-            if scene_idx is not None and info["scene"]:
-                parts[scene_idx] = info["scene"].replace("\n", " ").replace("\r", " ")
-            if desc_idx is not None and info["description"]:
-                parts[desc_idx] = info["description"].replace("\n", " ").replace("\r", " ")
+            if write_rating and rating_idx is not None:
+                if info.get("stars"):
+                    parts[rating_idx] = info["stars"]   # LVB: cijfer 1-5
+                elif info["circle"]:
+                    parts[rating_idx] = info["circle"]  # andere formaten: V/X
+            # Schrijf tekstvelden: zelfde kolom-idx → samenvoegen met " / "
+            _cw = {}  # col_idx → [waarden]
+            _cw_add(_cw, take_notes_idx, info.get("take_notes"))
+            _cw_add(_cw, scene_idx,      info.get("scene"))
+            _cw_add(_cw, desc_idx,       info.get("description"))
+            _cw_add(_cw, sound_idx,      info.get("sound_notes"))
+            _cw_add(_cw, cam_idx,        info.get("camera_notes"))
+            _cw_add(_cw, gen_notes_idx,  info.get("page_note"))
+            for _i, _vals in _cw.items():
+                parts[_i] = " / ".join(_vals)
+            # Stars (apart: numeriek, nooit samenvoegen)
+            if stars_idx is not None and info.get("stars"):
+                parts[stars_idx] = info["stars"]
+            # PU-markering in kolom
+            if info.get("is_pu") and pu_idx is not None:
+                existing = parts[pu_idx].strip()
+                if pu_position == "achter":
+                    parts[pu_idx] = (existing + " (PU)").strip() if existing else "(PU)"
+                else:
+                    parts[pu_idx] = ("(PU) " + existing).strip() if existing else "(PU)"
+            # AFG-markering in kolom
+            if info.get("is_afg") and afg_idx is not None:
+                existing = parts[afg_idx].strip()
+                if afg_position == "achter":
+                    parts[afg_idx] = (existing + " (AFG)").strip() if existing else "(AFG)"
+                else:
+                    parts[afg_idx] = ("(AFG) " + existing).strip() if existing else "(AFG)"
         new_data_lines.append("\t".join(parts) + "\t")
 
     log(f"ALE verwerkt: {matched} clips bijgewerkt", "info")
@@ -672,31 +993,71 @@ def _license_delete():
         pass
 
 
-# Continuity Bridge kleurpallet — gebaseerd op app-icoon (diep paars)
-BG       = "#130828"   # diepe achtergrond
-SURFACE  = "#1F1040"   # kaartachtergrond
-SURFACE2 = "#2C1A58"   # hover / actief
-BORDER   = "#3D2278"   # subtiele paarse rand
-TEXT     = "#EDE8FF"   # bijna-wit met paarse tint
-MUTED    = "#8070B8"   # gedempte subtekst
-AVID_B   = "#6B28D4"   # primair paars (knop, header)
-AVID_B_H = "#5820B0"   # hover primair
+# Continuity Bridge kleurpallet — diep donker, elektrisch paars
+BG       = "#060416"   # bijna-zwart met diepe paarse hint
+SURFACE  = "#0C0A22"   # kaartachtergrond
+SURFACE2 = "#161130"   # hover / actief
+BORDER   = "#2E2060"   # subtiele paarse rand
+TEXT     = "#F0ECFF"   # helder bijna-wit
+MUTED    = "#6858AA"   # gedempte subtekst
+AVID_B   = "#8B30F5"   # elektrisch paars (knop, header)
+AVID_B_H = "#7A26E0"   # hover — iets donkerder
 SUCCESS  = "#4ED98A"
 ERROR    = "#FF5577"
 
 
 def _rrect(cv, w, h, r, color, fg, text, font):
-    """Teken afgerond rechthoek + tekst op canvas cv."""
-    import tkinter.font as _tf
+    """Teken afgerond rechthoek + tekst op canvas cv (smooth polygon, geen seams)."""
     cv.delete("all")
     r = min(r, w // 2, h // 2)
-    kw = dict(fill=color, outline="")
-    cv.create_arc(0,     0,     2*r, 2*r, start=90,  extent=90, style="pieslice", **kw)
-    cv.create_arc(w-2*r, 0,     w,   2*r, start=0,   extent=90, style="pieslice", **kw)
-    cv.create_arc(0,     h-2*r, 2*r, h,   start=180, extent=90, style="pieslice", **kw)
-    cv.create_arc(w-2*r, h-2*r, w,   h,   start=270, extent=90, style="pieslice", **kw)
-    cv.create_rectangle(r, 0, w-r, h, **kw)
-    cv.create_rectangle(0, r, w, h-r, **kw)
+    pts = [
+        r,   0,    w-r, 0,    w,   0,
+        w,   r,    w,   h-r,  w,   h,
+        w-r, h,    r,   h,    0,   h,
+        0,   h-r,  0,   r,    0,   0,
+    ]
+    cv.create_polygon(pts, smooth=True, fill=color, outline=color)
+    cv.create_text(w // 2, h // 2, text=text, fill=fg, font=font)
+
+
+def _rrect_gradient(cv, w, h, r, c_tl, c_br, fg, text, font, darken=0.0):
+    """Diagonaal kleurverloop (links-boven → rechts-onder), afgeronde hoeken."""
+    import math
+    cv.delete("all")
+    r = min(r, w // 2, h // 2)
+
+    def _parse(c):
+        rv, gv, bv = int(c[1:3],16), int(c[3:5],16), int(c[5:7],16)
+        f = 1.0 - darken
+        return int(rv*f), int(gv*f), int(bv*f)
+
+    r1, g1, b1 = _parse(c_tl)
+    r2, g2, b2 = _parse(c_br)
+    D = max(w + h * 0.5 - 1, 1)   # diagonaal bereik
+
+    for y in range(h):
+        if y < r:
+            dy = r - y
+            dx = int(math.sqrt(max(0.0, r*r - dy*dy)))
+            x0, x1 = r - dx, w - r + dx
+        elif y >= h - r:
+            dy = y - (h - r)
+            dx = int(math.sqrt(max(0.0, r*r - dy*dy)))
+            x0, x1 = r - dx, w - r + dx
+        else:
+            x0, x1 = 0, w
+
+        # Teken 4-pixel brede deelstrips voor diagonaal effect
+        step = max(4, (x1 - x0) // 32)
+        for sx in range(x0, x1, step):
+            ex  = min(x1, sx + step + 1)
+            t   = min(1.0, (sx + y * 0.5) / D)
+            rc  = int(r1 + (r2 - r1) * t)
+            gc  = int(g1 + (g2 - g1) * t)
+            bc  = int(b1 + (b2 - b1) * t)
+            cv.create_rectangle(sx, y, ex, y + 1,
+                                fill=f"#{rc:02x}{gc:02x}{bc:02x}", outline="")
+
     cv.create_text(w // 2, h // 2, text=text, fill=fg, font=font)
 
 
@@ -717,37 +1078,253 @@ def _rounded_btn(parent, text, cmd, bg, hv, fg, font, px=14, py=7, r=10, pbg=Non
     return cv
 
 
+# ---------------------------------------------------------------------------
+# VOORKEUREN  (opslaan in ~/.continuitybridge/prefs.json)
+# ---------------------------------------------------------------------------
+import json as _json_prefs
+
+_PREFS_DIR  = Path.home() / ".continuitybridge"
+_PREFS_FILE = _PREFS_DIR / "prefs.json"
+
+_PREFS_DEFAULTS = {
+    "write_rating":       False,
+    "rating_col":         "Auto",
+    "write_notes":        True,
+    "notes_col":          "Auto",
+    "write_sound_notes":  False,
+    "sound_notes_col":    "Sound_Notes",
+    "write_camera_notes": False,
+    "camera_notes_col":   "Camera_Notes",
+    "output_dir":         "",
+    "output_suffix":      "_updated_with_notes",
+    "rating_col_recent":  [],
+    "notes_col_recent":   [],
+    "write_pu_in_notes":  False,
+    "write_afg_in_notes": False,
+    "pu_col":             "Auto",
+    "pu_position":        "voor",
+    "afg_col":            "Auto",
+    "afg_position":       "voor",
+    "write_general_notes": False,
+    "general_notes_col":  "Camera_Notes",
+}
+_INVALID_COL_VALUES = {"Kies kolom…", "Eigen naam…", "Kies kolom...", ""}
+
+def _load_prefs():
+    try:
+        if _PREFS_FILE.exists():
+            data = _json_prefs.loads(_PREFS_FILE.read_text("utf-8"))
+            prefs = {**_PREFS_DEFAULTS, **data}
+            # Sanitize: herstel placeholder-waarden naar Auto
+            for key in ("rating_col", "notes_col"):
+                if prefs[key] in _INVALID_COL_VALUES:
+                    prefs[key] = "Auto"
+            # Zorg dat recent-lijsten lists zijn
+            for key in ("rating_col_recent", "notes_col_recent"):
+                if not isinstance(prefs.get(key), list):
+                    prefs[key] = []
+            return prefs
+    except Exception:
+        pass
+    return dict(_PREFS_DEFAULTS)
+
+def _add_recent(prefs, key, value, max_items=3):
+    """Voeg waarde toe aan recent-lijst, geen duplicaten, max max_items."""
+    if not value or value == "Auto" or value in _INVALID_COL_VALUES:
+        return
+    lst = [v for v in prefs.get(key, []) if v != value]
+    prefs[key] = [value] + lst[:max_items - 1]
+
+def _save_prefs(prefs: dict):
+    try:
+        _PREFS_DIR.mkdir(parents=True, exist_ok=True)
+        _PREFS_FILE.write_text(_json_prefs.dumps(prefs, indent=2), "utf-8")
+    except Exception:
+        pass
+
+
 class App:
-    NOTES_COLS = ["Auto", "Comment", "Note", "Take_notes", "Comments", "Notes"]
+    # Meest voorkomende kolommen — gebruikt in hoofdscherm dropdown
+    COMMON_COLS  = ["Comment", "Comments", "Description", "Label",
+                    "Note", "Rating", "Stars", "Take_Notes"]
+
+    NOTES_COLS   = ["Auto", "Comment", "Comments", "Description", "Label",
+                    "Note", "Notes", "Take_Notes", "Take_notes"]
+    RATING_COLS  = ["Auto", "Circled", "Rating", "Score", "Stars"]
+
+    # Alle bekende Avid Media Composer kolomnamen, gegroepeerd
+    AVID_COLS = {
+        "Algemeen": [
+            "Camera", "Camroll", "Color", "Comment", "Comments", "Creation Date",
+            "Creator", "Date", "Description", "Drive", "Duration", "End", "Format",
+            "Frame", "Label", "Lock", "Mark IN", "Mark OUT", "Marker", "Modified Date",
+            "Note", "Offline", "Production", "Project", "Reel", "Reel #", "Scene",
+            "Shoot Date", "Sound TC", "Soundroll", "Source File", "Start", "Take",
+            "Take_Notes", "Tape", "TapeID", "Title", "Tracks", "Transfer", "Video",
+        ],
+        "Timecode": [
+            "Aux TC 24", "Auxiliary TC1", "Auxiliary TC2", "Auxiliary TC3",
+            "Auxiliary TC4", "Auxiliary TC5", "Film TC", "KN Dur", "KN End",
+            "KN Film", "KN IN-OUT", "KN Mark IN", "KN Mark OUT", "KN Start",
+            "Sound TC", "TC 24", "TC 25PD", "TC 30", "TC 30NP", "VITC",
+        ],
+        "Audio": [
+            "Audio Bit Depth", "Audio File Format", "Audio SR",
+            "Track Formats", "TRK1", "TRK2", "TRK3", "TRK4", "TRK5",
+            "TRK6", "TRK7", "TRK8", "TRK9", "TRK10",
+        ],
+        "Video / Kleur": [
+            "AFD", "ASC_SAT", "ASC_SOP", "Cadence", "CFPS", "Chroma Subsampling",
+            "Color Bit Depth", "Color Space", "Color Transformation", "DPX",
+            "Field Motion", "FPS", "Image Aspect Ratio", "Image Framing",
+            "Image Size", "LUT", "Pixel Aspect Ratio", "Raster Dimension",
+            "Reformat", "S3D Alignment", "S3D Channel", "S3D Clip Name",
+            "S3D Contributors", "S3D Eye Order", "S3D Group Name",
+            "S3D Inversion", "S3D InversionR", "S3D Leading Eye",
+            "Video File Format", "UBITS",
+        ],
+        "Film / Ink": [
+            "Auxiliary Ink", "AuxInk Dur", "AuxInk Edge", "AuxInk End",
+            "AuxInk Film", "Frame Count Duration", "Frame Count End",
+            "Frame Count Start", "IN-OUT", "Ink Dur", "Ink Edge", "Ink End",
+            "Ink Film", "Ink Number", "KN Dur", "KN End", "KN Film",
+            "KN IN-OUT", "KN Mark IN", "KN Mark OUT", "KN Start",
+            "Labroll", "Master Dur", "Master Edge", "Master End",
+            "Master Film", "Master Start", "Perf", "Pullin", "Pullout", "Slip",
+        ],
+        "Media / Proxy": [
+            "Ancillary Data", "iDataLink", "Media File Path", "Media Status",
+            "NEXIS Cache", "Proxy Offline", "Proxy Path", "Proxy Video",
+            "Source Path", "UNC Path",
+        ],
+        "Rating / Status": [
+            "Circled", "Rating", "Score", "Stars", "Status", "qc",
+        ],
+        "Vendor": [
+            "Vendor Asset Description", "Vendor Asset ID", "Vendor Asset Keywords",
+            "Vendor Asset Name", "Vendor Asset Price", "Vendor Asset Rights",
+            "Vendor Asset Status", "Vendor Download Master", "Vendor Invoice ID",
+            "Vendor Name", "Vendor Original Master",
+        ],
+        "Overig / Custom": [
+            "CaptureGammaEquation", "Clip", "CreationDate", "Disc Description",
+            "GammaForCDL", "hardware", "Index", "InitializedDate",
+            "Journalist", "LensModelName", "Main Title 1(ASCII)",
+            "Main Title 2(Multi Language)", "manufacturer", "MediaKind",
+            "modelName", "MonitoringBaseCurve", "MonitoringDescription",
+            "PDZK-MA2 CFPS", "Plug-In", "ProavIdRef", "Reel", "Reformat",
+            "Sctk name", "serialNo", "software", "Soundfile", "T1", "T2",
+            "T5", "T6", "T7", "T8", "Title 1(ASCII)", "Title 2(Multi Language)",
+            "Transcription", "UserDiscId", "VFX", "VFX Reel",
+        ],
+    }
 
     def __init__(self, root):
         self.root = root
-        self.pdf_path     = tk.StringVar()
-        self.ale_path     = tk.StringVar()
-        self.write_rating = tk.BooleanVar(value=False)
-        self.notes_col    = tk.StringVar(value="Auto")
+        self.ale_paths    = []   # lijst van ALE-bestandspaden
+        self.pdf_paths    = []   # lijst van PDF-bestandspaden
+        self._refresh_ale = lambda: None   # ingesteld door _multi_file_widget
+        self._refresh_pdf = lambda: None
+
+        # ── Voorkeuren laden ─────────────────────────────────────────────────
+        _p = _load_prefs()
+        self.write_rating     = tk.BooleanVar(value=_p["write_rating"])
+        self.write_notes      = tk.BooleanVar(value=_p.get("write_notes", True))
+        self.notes_col        = tk.StringVar(value=_p["notes_col"])
+        self.rating_col       = tk.StringVar(value=_p["rating_col"])
+        self.write_sound_notes  = tk.BooleanVar(value=_p["write_sound_notes"])
+        self.sound_notes_col    = tk.StringVar(value=_p["sound_notes_col"])
+        self.write_camera_notes = tk.BooleanVar(value=_p["write_camera_notes"])
+        self.camera_notes_col   = tk.StringVar(value=_p["camera_notes_col"])
+        self.output_dir       = tk.StringVar(value=_p["output_dir"])
+        self.output_suffix    = tk.StringVar(value=_p.get("output_suffix", "_updated_with_notes"))
+        self.write_pu_in_notes  = tk.BooleanVar(value=_p["write_pu_in_notes"])
+        self.write_afg_in_notes = tk.BooleanVar(value=_p["write_afg_in_notes"])
+        self.pu_col             = tk.StringVar(value=_p.get("pu_col", "Auto"))
+        self.pu_position        = tk.StringVar(value=_p.get("pu_position", "voor"))
+        self.afg_col            = tk.StringVar(value=_p.get("afg_col", "Auto"))
+        self.afg_position       = tk.StringVar(value=_p.get("afg_position", "voor"))
+        self.write_general_notes = tk.BooleanVar(value=_p.get("write_general_notes", False))
+        self.general_notes_col  = tk.StringVar(value=_p.get("general_notes_col", "Camera_Notes"))
+        self._prefs_cache = _p   # bewaar voor recents
+
+        def _save_all():
+            _save_prefs({
+                "write_rating":       self.write_rating.get(),
+                "rating_col":         self.rating_col.get(),
+                "write_notes":        self.write_notes.get(),
+                "notes_col":          self.notes_col.get(),
+                "write_sound_notes":  self.write_sound_notes.get(),
+                "sound_notes_col":    self.sound_notes_col.get(),
+                "write_camera_notes": self.write_camera_notes.get(),
+                "camera_notes_col":   self.camera_notes_col.get(),
+                "output_dir":         self.output_dir.get(),
+                "output_suffix":      self.output_suffix.get(),
+                "rating_col_recent":  self._prefs_cache.get("rating_col_recent", []),
+                "notes_col_recent":   self._prefs_cache.get("notes_col_recent", []),
+                "write_pu_in_notes":  self.write_pu_in_notes.get(),
+                "write_afg_in_notes": self.write_afg_in_notes.get(),
+                "pu_col":             self.pu_col.get(),
+                "pu_position":        self.pu_position.get(),
+                "afg_col":            self.afg_col.get(),
+                "afg_position":       self.afg_position.get(),
+                "write_general_notes": self.write_general_notes.get(),
+                "general_notes_col":  self.general_notes_col.get(),
+            })
+        self._save_prefs_all = _save_all
+
+        # Sla prefs op bij elke wijziging (maar sla geen placeholders op)
+        def _on_pref_change(*_):
+            if self.rating_col.get() in _INVALID_COL_VALUES: return
+            if self.notes_col.get()  in _INVALID_COL_VALUES: return
+            _save_all()
+        self.write_rating    .trace_add("write", _on_pref_change)
+        self.write_notes     .trace_add("write", _on_pref_change)
+        self.notes_col       .trace_add("write", _on_pref_change)
+        self.rating_col      .trace_add("write", _on_pref_change)
+        self.write_sound_notes .trace_add("write", _on_pref_change)
+        self.sound_notes_col   .trace_add("write", _on_pref_change)
+        self.write_camera_notes.trace_add("write", _on_pref_change)
+        self.camera_notes_col  .trace_add("write", _on_pref_change)
+        self.output_dir      .trace_add("write", _on_pref_change)
+        self.output_suffix   .trace_add("write", _on_pref_change)
+        self.write_pu_in_notes .trace_add("write", _on_pref_change)
+        self.write_afg_in_notes.trace_add("write", _on_pref_change)
+        self.pu_col            .trace_add("write", _on_pref_change)
+        self.pu_position       .trace_add("write", _on_pref_change)
+        self.afg_col           .trace_add("write", _on_pref_change)
+        self.afg_position      .trace_add("write", _on_pref_change)
+        self.write_general_notes.trace_add("write", _on_pref_change)
+        self.general_notes_col .trace_add("write", _on_pref_change)
         self.root.title("Continuity Bridge")
-        self.root.geometry("520x510")
-        self.root.resizable(False, False)
+        self.root.geometry("520x650")
+        self.root.resizable(False, True)
+        self.root.minsize(520, 520)
         self.root.configure(bg=BG)
 
         # ── Update-check ─────────────────────────────────────────────────────
         def _check_updates(silent=False):
             """Check GitHub releases. silent=True → alleen tonen bij nieuwere versie."""
-            import urllib.request, json
+            import urllib.request, json as _json2
             def _do():
                 try:
                     req = urllib.request.Request(RELEASES_URL,
                           headers={"User-Agent": "ContinuityBridge"})
-                    with urllib.request.urlopen(req, timeout=5) as r:
-                        releases = json.loads(r.read())
-                    # /releases geeft een lijst terug (incl. pre-releases),
-                    # gepubliceerd op datum gesorteerd. Pak de eerste (meest recent).
-                    data = releases[0] if isinstance(releases, list) and releases else {}
-                    latest = data.get("tag_name", "").lstrip("v")
+                    with urllib.request.urlopen(req, timeout=10) as r:
+                        releases = _json2.loads(r.read())
+                    # /releases geeft een lijst terug; pak de meest recente.
+                    if not isinstance(releases, list) or not releases:
+                        if not silent:
+                            self.root.after(0, lambda: tk.messagebox.showinfo(
+                                "Geen updates",
+                                f"Je hebt de nieuwste versie ({VERSION})."))
+                        return
+                    data   = releases[0]
+                    latest = data.get("tag_name", "").lstrip("v").strip()
+                    if not latest:
+                        return
                     def _vt(v):
-                        import re as _re
-                        nums = _re.findall(r'\d+', v)
+                        nums = re.findall(r'\d+', v)
                         return tuple(int(x) for x in nums)
                     newer = _vt(latest) > _vt(VERSION)
                     def _show():
@@ -764,10 +1341,13 @@ class App:
                                 f"Je hebt de nieuwste versie ({VERSION}).")
                     self.root.after(0, _show)
                 except Exception:
+                    # Bij netwerk-problemen alleen bij expliciete check een zachte melding
                     if not silent:
-                        self.root.after(0, lambda: tk.messagebox.showwarning(
-                            "Update-check mislukt",
-                            "Kan geen verbinding maken met GitHub."))
+                        self.root.after(0, lambda: tk.messagebox.showinfo(
+                            "Update-check",
+                            "Kon de versie-info niet ophalen.\n"
+                            "Controleer je internetverbinding of kijk op:\n"
+                            f"github.com/{GITHUB_REPO}/releases"))
             threading.Thread(target=_do, daemon=True).start()
 
         # ── About-venster ────────────────────────────────────────────────────
@@ -995,6 +1575,9 @@ class App:
             # App-menu (macOS apple-menu)
             _appmenu = tk.Menu(_menubar, name='apple', tearoff=False)
             _appmenu.add_command(label='Over Continuity Bridge', command=_show_about)
+            _appmenu.add_separator()
+            _appmenu.add_command(label='Voorkeuren…', command=self._show_prefs,
+                                 accelerator='Command+,')
             _menubar.add_cascade(label='Continuity Bridge', menu=_appmenu)
 
             # Help-menu
@@ -1008,8 +1591,11 @@ class App:
 
             self.root.config(menu=_menubar)
             self.root.createcommand('tk::mac::ShowAbout', _show_about)
+            self.root.createcommand('tk::mac::ShowPreferences', self._show_prefs)
         except Exception:
             pass
+
+        self.root.bind_all('<Command-comma>', lambda e: self._show_prefs())
 
         # Startup update-check (stil — alleen tonen bij nieuwere versie)
         self.root.after(2000, lambda: _check_updates(silent=True))
@@ -1037,6 +1623,337 @@ class App:
         if HAS_NATIVE_DND and not HAS_DND:
             self.root.after(300, self._setup_native_dnd)
 
+    def _pick_column(self, var, parent_win=None):
+        """Zoekbaar keuzevenster met alle bekende Avid-kolomnamen."""
+        _prev_val = var.get()
+        anchor = parent_win or self.root
+
+        dlg = tk.Toplevel(anchor)
+        dlg.title("Kies kolom")
+        dlg.resizable(False, False)
+        dlg.configure(bg=BG)
+        dlg.grab_set()
+
+        def _cancel():
+            var.set(_prev_val)
+            dlg.destroy()
+        dlg.protocol("WM_DELETE_WINDOW", _cancel)
+
+        # Platte gesorteerde lijst per groep, met groepslabels
+        all_items = []
+        for grp, cols in App.AVID_COLS.items():
+            all_items.append((f"── {grp} ──", True, ""))
+            for c in sorted(set(cols)):
+                all_items.append((c, False, c))
+
+        # Zoekbalk
+        tk.Label(dlg, text="Zoek:", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11)).pack(anchor="w", padx=16, pady=(14, 4))
+        search_var = tk.StringVar()
+        ent = tk.Entry(dlg, textvariable=search_var, width=30,
+                       bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
+                       relief="flat", font=("Helvetica Neue", 12),
+                       highlightthickness=1, highlightbackground=BORDER,
+                       highlightcolor=AVID_B)
+        ent.pack(padx=16, ipady=4, fill="x")
+        ent.focus_set()
+
+        # Listbox + scrollbar
+        frame_lb = tk.Frame(dlg, bg=BORDER, bd=1, relief="flat")
+        frame_lb.pack(padx=16, pady=8, fill="both", expand=True)
+        sb = tk.Scrollbar(frame_lb, orient="vertical", bg=SURFACE2,
+                          troughcolor=SURFACE, relief="flat", bd=0)
+        lb = tk.Listbox(frame_lb, yscrollcommand=sb.set,
+                        bg=SURFACE, fg=TEXT, selectbackground=AVID_B,
+                        selectforeground="white", relief="flat", bd=0,
+                        font=("Helvetica Neue", 11), activestyle="none",
+                        height=16, width=32)
+        sb.config(command=lb.yview)
+        sb.pack(side="right", fill="y")
+        lb.pack(side="left", fill="both", expand=True)
+
+        _lb_map = []
+
+        def _fill(filter_text=""):
+            lb.delete(0, "end")
+            _lb_map.clear()
+            q = filter_text.strip().lower()
+            for label, is_hdr, col in all_items:
+                if q:
+                    if is_hdr: continue
+                    if q not in col.lower(): continue
+                lb.insert("end", f"  {label}" if not is_hdr else label)
+                if is_hdr:
+                    lb.itemconfig("end", fg=MUTED, selectbackground=SURFACE,
+                                  selectforeground=MUTED)
+                _lb_map.append(None if is_hdr else col)
+
+        _fill()
+        search_var.trace_add("write", lambda *_: _fill(search_var.get()))
+
+        # Eigen naam onderaan
+        tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x", padx=16)
+        own_frame = tk.Frame(dlg, bg=BG)
+        own_frame.pack(fill="x", padx=16, pady=8)
+        tk.Label(own_frame, text="Of typ eigen naam:", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 10)).pack(side="left")
+        own_var = tk.StringVar()
+        own_ent = tk.Entry(own_frame, textvariable=own_var, width=18,
+                           bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
+                           relief="flat", font=("Helvetica Neue", 11),
+                           highlightthickness=1, highlightbackground=BORDER,
+                           highlightcolor=AVID_B)
+        own_ent.pack(side="left", padx=(8, 0), ipady=3)
+
+        def _confirm(col_name=None):
+            name = col_name or own_var.get().strip()
+            if name:
+                var.set(name)
+            dlg.destroy()
+
+        lb.bind("<Double-Button-1>", lambda e: _confirm(
+            _lb_map[lb.curselection()[0]] if lb.curselection() and _lb_map[lb.curselection()[0]] else None))
+        ent.bind("<Return>", lambda e: _confirm(
+            _lb_map[lb.curselection()[0]] if lb.curselection() and _lb_map[lb.curselection()[0]] else None)
+            or (own_var.get().strip() and _confirm()))
+        own_ent.bind("<Return>", lambda e: _confirm())
+
+        btn_row = tk.Frame(dlg, bg=BG)
+        btn_row.pack(anchor="e", padx=16, pady=(0, 14))
+        _rounded_btn(btn_row, "Annuleer", _cancel,
+                     bg=SURFACE2, hv=SURFACE, fg=TEXT,
+                     font=("Helvetica Neue", 11), px=16, py=6, r=8, pbg=BG).pack(side="left", padx=(0, 8))
+        _rounded_btn(btn_row, "Kies", lambda: _confirm(
+                         _lb_map[lb.curselection()[0]] if lb.curselection() and _lb_map[lb.curselection()[0]] else None),
+                     bg=AVID_B, hv="#2a6fbd", fg="white",
+                     font=("Helvetica Neue", 11, "bold"), px=16, py=6, r=8, pbg=BG).pack(side="left")
+
+        dlg.update_idletasks()
+        cx = anchor.winfo_x() + anchor.winfo_width()  // 2
+        cy = anchor.winfo_y() + anchor.winfo_height() // 2
+        dlg.geometry(f"+{cx - dlg.winfo_width()//2}+{cy - dlg.winfo_height()//2}")
+        dlg.wait_window()
+
+    def _show_prefs(self):
+        """Voorkeuren-venster (modaal)."""
+        win = tk.Toplevel(self.root)
+        win.title("Voorkeuren")
+        win.resizable(False, False)
+        win.configure(bg=BG)
+        win.grab_set()
+
+        PAD = 20
+        ROW = 32
+
+        # ── Titel ──────────────────────────────────────────────────────────
+        tk.Label(win, text="Voorkeuren", bg=BG, fg=TEXT,
+                 font=("Helvetica Neue", 15, "bold")).pack(anchor="w", padx=PAD, pady=(PAD, 14))
+
+        tk.Frame(win, bg=BORDER, height=1).pack(fill="x", padx=PAD)
+
+        body = tk.Frame(win, bg=BG)
+        body.pack(fill="x", padx=PAD, pady=(14, 6))
+
+        def _section_hdr(parent, label):
+            f = tk.Frame(parent, bg=BG)
+            f.pack(fill="x", pady=(10, 2))
+            tk.Label(f, text=label, bg=BG, fg=AVID_B,
+                     font=("Helvetica Neue", 9, "bold")).pack(side="left")
+            tk.Frame(f, bg=BORDER, height=1).pack(
+                side="left", fill="x", expand=True, padx=(8, 0), pady=(1, 0))
+
+        def _row(label):
+            f = tk.Frame(body, bg=BG, height=ROW)
+            f.pack(fill="x", pady=3)
+            tk.Label(f, text=label, bg=BG, fg=MUTED,
+                     font=("Helvetica Neue", 11), width=18, anchor="w").pack(side="left")
+            return f
+
+        # Stijl voor alle comboboxen in dit venster
+        style = ttk.Style()
+        CUSTOM = "Kies kolom…"
+
+        def _cb(parent, var, values):
+            all_values = list(values) + [CUSTOM]
+            cb = ttk.Combobox(parent, textvariable=var, values=all_values,
+                              state="readonly", width=16,
+                              style="CB.TCombobox", font=("Helvetica Neue", 11))
+            cb.pack(side="left")
+            def _on_select(e):
+                if var.get() == CUSTOM:
+                    self._pick_column(var, win)
+            cb.bind("<<ComboboxSelected>>", _on_select)
+            return cb
+
+        _section_hdr(body, "PER TAKE")
+
+        # Notes: checkbox + "→" + kolom-dropdown
+        r2 = _row("Notes")
+        tk.Checkbutton(r2, variable=self.write_notes,
+                       bg=BG, fg=TEXT, selectcolor=SURFACE2,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+        tk.Label(r2, text="→", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+        _cb(r2, self.notes_col, self.NOTES_COLS)
+
+        # Rating: checkbox + "→" + kolom-dropdown
+        r1 = _row("Rating")
+        tk.Checkbutton(r1, variable=self.write_rating,
+                       bg=BG, fg=TEXT, selectcolor=SURFACE2,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+        tk.Label(r1, text="→", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+        _cb(r1, self.rating_col, self.RATING_COLS)
+
+        # PU: checkbox + "→" + kolom-dropdown + voor/achter
+        PU_COLS = ["Auto", "Comment", "Comments", "Notes", "Take_Notes"]
+        r5 = _row("Schrijf (PU)")
+        tk.Checkbutton(r5, variable=self.write_pu_in_notes,
+                       bg=BG, fg=TEXT, selectcolor=SURFACE2,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+        tk.Label(r5, text="→", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+        _cb(r5, self.pu_col, PU_COLS)
+        tk.Label(r5, text="positie:", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 10)).pack(side="left", padx=(8, 4))
+        ttk.Combobox(r5, textvariable=self.pu_position,
+                     values=["voor", "achter"], state="readonly", width=7,
+                     style="CB.TCombobox",
+                     font=("Helvetica Neue", 11)).pack(side="left")
+
+        # AFG: checkbox + "→" + kolom-dropdown + voor/achter
+        AFG_COLS = ["Auto", "Comment", "Comments", "Notes", "Take_Notes"]
+        r6 = _row("Schrijf (AFG)")
+        tk.Checkbutton(r6, variable=self.write_afg_in_notes,
+                       bg=BG, fg=TEXT, selectcolor=SURFACE2,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+        tk.Label(r6, text="→", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+        _cb(r6, self.afg_col, AFG_COLS)
+        tk.Label(r6, text="positie:", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 10)).pack(side="left", padx=(8, 4))
+        ttk.Combobox(r6, textvariable=self.afg_position,
+                     values=["voor", "achter"], state="readonly", width=7,
+                     style="CB.TCombobox",
+                     font=("Helvetica Neue", 11)).pack(side="left")
+
+        body2 = tk.Frame(win, bg=BG)
+        body2.pack(fill="x", padx=PAD)
+
+        def _row2(label):
+            f = tk.Frame(body2, bg=BG, height=ROW)
+            f.pack(fill="x", pady=3)
+            tk.Label(f, text=label, bg=BG, fg=MUTED,
+                     font=("Helvetica Neue", 11), width=18, anchor="w").pack(side="left")
+            return f
+
+        SOUND_COLS  = ["Sound_Notes", "Sound", "Audio_Notes"]
+        CAMERA_COLS = ["Camera_Notes", "Continuity_Notes", "Script_Notes"]
+        GEN_COLS    = ["Camera_Notes", "Opmerkingen", "Continuity_Notes", "Script_Notes"]
+
+        def _cb2(parent, var, values):
+            CUSTOM = "Kies kolom…"
+            cb = ttk.Combobox(parent, textvariable=var, values=list(values) + [CUSTOM],
+                              state="readonly", width=16,
+                              style="CB.TCombobox", font=("Helvetica Neue", 11))
+            cb.pack(side="left")
+            cb.bind("<<ComboboxSelected>>",
+                    lambda e: self._pick_column(var, win) if var.get() == CUSTOM else None)
+            return cb
+
+        _section_hdr(body2, "ALGEMENE OPMERKINGEN PER SLATE")
+
+        r7 = _row2("Sound Notes")
+        tk.Checkbutton(r7, variable=self.write_sound_notes,
+                       bg=BG, fg=TEXT, selectcolor=SURFACE2,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+        tk.Label(r7, text="→", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+        _cb2(r7, self.sound_notes_col, SOUND_COLS)
+
+        r8 = _row2("Camera Notes")
+        tk.Checkbutton(r8, variable=self.write_camera_notes,
+                       bg=BG, fg=TEXT, selectcolor=SURFACE2,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+        tk.Label(r8, text="→", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+        _cb2(r8, self.camera_notes_col, CAMERA_COLS)
+
+        r9 = _row2("Opmerkingen")
+        tk.Checkbutton(r9, variable=self.write_general_notes,
+                       bg=BG, fg=TEXT, selectcolor=SURFACE2,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+        tk.Label(r9, text="→", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+        _cb2(r9, self.general_notes_col, GEN_COLS)
+
+        tk.Frame(win, bg=BORDER, height=1).pack(fill="x", padx=PAD, pady=(12, 0))
+
+        # Uitvoermap — helemaal onderaan
+        body3 = tk.Frame(win, bg=BG)
+        body3.pack(fill="x", padx=PAD, pady=(8, 0))
+
+        r4 = tk.Frame(body3, bg=BG, height=ROW)
+        r4.pack(fill="x", pady=4)
+        tk.Label(r4, text="Uitvoermap", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11), width=18, anchor="w").pack(side="left")
+        out_entry = tk.Entry(r4, textvariable=self.output_dir, width=22,
+                             bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
+                             relief="flat", font=("Helvetica Neue", 11),
+                             highlightthickness=1, highlightbackground=BORDER,
+                             highlightcolor=AVID_B)
+        out_entry.pack(side="left", ipady=3)
+
+        def _pick_dir():
+            d = filedialog.askdirectory(title="Kies uitvoermap",
+                                        initialdir=self.output_dir.get() or Path.home())
+            if d:
+                self.output_dir.set(d)
+        _rounded_btn(r4, "Kies…", _pick_dir,
+                     bg=SURFACE2, hv=BORDER, fg=TEXT,
+                     font=("Helvetica Neue", 11), px=10, py=3, r=6,
+                     pbg=BG).pack(side="left", padx=(4, 0))
+        tk.Label(r4, text="(leeg = zelfde map als ALE)", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 10)).pack(side="left", padx=(8, 0))
+
+        r4b = tk.Frame(body3, bg=BG, height=ROW)
+        r4b.pack(fill="x", pady=4)
+        tk.Label(r4b, text="Bestandsnaam", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11), width=18, anchor="w").pack(side="left")
+        tk.Label(r4b, text="{originele naam}", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 10)).pack(side="left")
+        tk.Entry(r4b, textvariable=self.output_suffix, width=20,
+                 bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
+                 relief="flat", font=("Helvetica Neue", 11),
+                 highlightthickness=1, highlightbackground=BORDER,
+                 highlightcolor=AVID_B).pack(side="left", ipady=3, padx=(4, 0))
+        tk.Label(r4b, text=".ALE", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 10)).pack(side="left", padx=(4, 0))
+
+        tk.Frame(win, bg=BORDER, height=1).pack(fill="x", padx=PAD, pady=(8, 0))
+
+        # Sluit-knop
+        btn = _rounded_btn(win, "Sluit", win.destroy,
+                           bg=AVID_B, hv="#2a6fbd", fg="white",
+                           font=("Helvetica Neue", 12, "bold"),
+                           px=24, py=8, r=10, pbg=BG)
+        btn.pack(anchor="e", padx=PAD, pady=PAD)
+
+        win.update_idletasks()
+        # Centreer op hoofdvenster
+        mw = self.root.winfo_x() + self.root.winfo_width()  // 2
+        mh = self.root.winfo_y() + self.root.winfo_height() // 2
+        w, h = win.winfo_width(), win.winfo_height()
+        win.geometry(f"+{mw - w//2}+{mh - h//2}")
+        win.wait_window()
+
     def _setup_native_dnd(self):
         """Bestandsdrop via ctypes ObjC-runtime (bypast PyObjC protocol-check)."""
         import ctypes
@@ -1049,23 +1966,30 @@ class App:
 
         def _poll_drops():
             """Draait periodiek in de normale Tk event-loop — thread state altijd geldig."""
+            ale_added = pdf_added = False
             try:
                 while True:
                     filepath = _drop_queue.get_nowait()
                     p = Path(filepath)
                     ext = p.suffix.lower()
                     if ext == ".pdf":
-                        app_ref.pdf_path.set(filepath)
-                        app_ref.pdf_lbl.config(text=p.name, fg=TEXT)
-                        app_ref._log_direct(f"PDF:  {p.name}", "info")
+                        if filepath not in app_ref.pdf_paths:
+                            app_ref.pdf_paths.append(filepath)
+                            app_ref._log_direct(f"PDF:  {p.name}", "info")
+                            pdf_added = True
                     elif ext in (".ale", ".txt"):
-                        app_ref.ale_path.set(filepath)
-                        app_ref.ale_lbl.config(text=p.name, fg=TEXT)
-                        app_ref._log_direct(f"ALE:  {p.name}", "info")
+                        if filepath not in app_ref.ale_paths:
+                            app_ref.ale_paths.append(filepath)
+                            app_ref._log_direct(f"ALE:  {p.name}", "info")
+                            ale_added = True
                     else:
                         app_ref._log_direct(f"Onbekend bestandstype: {p.name}", "info")
             except _queue.Empty:
                 pass
+            if ale_added:
+                app_ref._refresh_ale()
+            if pdf_added:
+                app_ref._refresh_pdf()
             app_ref.root.after(50, _poll_drops)
 
         # Start de poller vanuit normale Python-context (veilig voor PythonCmd)
@@ -1215,10 +2139,10 @@ class App:
                 def _imp_perform(s, se, sender):
                     try:
                         files = _get_files(sender)
-                        if files:
+                        for f in files:
                             # Alleen queue-put — GEEN root.after() vanuit ctypes-context
                             # (Python 3.14: PyEval_RestoreThread(NULL) = fatal crash)
-                            _drop_queue.put(files[0])
+                            _drop_queue.put(f)
                         return 1
                     except Exception:
                         return 0
@@ -1259,9 +2183,9 @@ class App:
 
     def _ui(self):
         # ── Header (gradient canvas) ─────────────────────────────────────────
-        _HDR_H  = 52
-        _GL     = (0x9B, 0x40, 0xFF)   # links: elektrisch violet
-        _GR     = (0x1A, 0x05, 0x45)   # rechts: diep indigo
+        _HDR_H  = 56
+        _GL     = (0xA0, 0x30, 0xFF)   # links: fel elektrisch violet
+        _GR     = (0x50, 0x10, 0xC0)   # rechts: levendig indigo (niet zwart)
 
         hdr_cv = tk.Canvas(self.root, height=_HDR_H, bd=0, highlightthickness=0)
         hdr_cv.pack(fill="x")
@@ -1292,36 +2216,31 @@ class App:
         body = tk.Frame(self.root, bg=BG, pady=22, padx=22)
         body.pack(fill="x")
 
-        # Sectielabels met lichte paarse tint
-        def _section_label(parent, text):
-            tk.Label(parent, text=text.upper(), bg=BG, fg=MUTED,
-                     font=("Helvetica Neue", 9, "bold"), anchor="w").pack(fill="x", pady=(0, 6))
+        # Sectielabels met genummerd badge
+        def _section_label(parent, number, text):
+            row = tk.Frame(parent, bg=BG)
+            row.pack(fill="x", pady=(0, 7))
+            # Badge: klein paars vierkantje met nummer
+            badge = tk.Canvas(row, width=18, height=18, bg=BG,
+                              bd=0, highlightthickness=0)
+            badge.pack(side="left", padx=(0, 8))
+            badge.create_rectangle(0, 0, 18, 18, fill=AVID_B, outline="")
+            badge.create_text(9, 9, text=str(number), fill="white",
+                              font=("Helvetica Neue", 9, "bold"))
+            tk.Label(row, text=text.upper(), bg=BG, fg=MUTED,
+                     font=("Helvetica Neue", 9, "bold"), anchor="w").pack(side="left")
 
-        _section_label(body, "1  Avid Bin ALE")
-        self._file_row(body, self.ale_path, self._pick_ale, "ale_lbl",
-                       self._drop_ale).pack(fill="x", pady=(0, 18))
+        _section_label(body, 1, "Avid Log Exchange file (ALE)")
+        self._multi_file_widget(body, self.ale_paths, "ALE").pack(fill="x", pady=(0, 14))
 
-        _section_label(body, "2  Continuïteitsrapport (PDF)")
-        self._file_row(body, self.pdf_path, self._pick_pdf, "pdf_lbl",
-                       self._drop_pdf).pack(fill="x", pady=(0, 22))
+        _section_label(body, 2, "Continuïteitsrapport (PDF)")
+        self._multi_file_widget(body, self.pdf_paths, "PDF").pack(fill="x", pady=(0, 14))
 
-        # ── Opties ───────────────────────────────────────────────────────────
-        # Dunne scheidingslijn
-        tk.Frame(body, bg=BORDER, height=1).pack(fill="x", pady=(0, 14))
+        # ── Notes-kolom keuze ─────────────────────────────────────────────────
+        _section_label(body, 3, "Notes → kolom")
 
         opts = tk.Frame(body, bg=BG)
-        opts.pack(fill="x", pady=(0, 14))
-
-        chk = tk.Checkbutton(opts, text="Schrijf rating  (V / X)",
-                             variable=self.write_rating,
-                             bg=BG, fg=TEXT, selectcolor=SURFACE2,
-                             activebackground=BG, activeforeground=TEXT,
-                             font=("Helvetica Neue", 11), anchor="w",
-                             cursor="arrow", relief="flat", bd=0)
-        chk.pack(side="left")
-
-        tk.Label(opts, text="Notes →", bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11)).pack(side="left", padx=(18, 5))
+        opts.pack(fill="x", pady=(0, 0))
 
         style = ttk.Style()
         style.theme_use("default")
@@ -1338,7 +2257,6 @@ class App:
                   selectforeground=[("readonly", TEXT)],
                   background=[("active", SURFACE2), ("readonly", SURFACE2)])
 
-        # Dropdown-listbox kleuren via Tk option database (werkt wel op macOS)
         self.root.option_add("*TCombobox*Listbox.background",       SURFACE)
         self.root.option_add("*TCombobox*Listbox.foreground",       TEXT)
         self.root.option_add("*TCombobox*Listbox.selectBackground", AVID_B)
@@ -1347,10 +2265,72 @@ class App:
         self.root.option_add("*TCombobox*Listbox.relief",           "flat")
         self.root.option_add("*TCombobox*Listbox.borderWidth",      "0")
 
-        cb = ttk.Combobox(opts, textvariable=self.notes_col,
-                          values=self.NOTES_COLS, state="readonly", width=11,
-                          style="CB.TCombobox", font=("Helvetica Neue", 11))
-        cb.pack(side="left")
+        PICK = "Kies kolom…"
+
+        def _make_col_values(recent_key):
+            base    = self.COMMON_COLS
+            recents = [r for r in self._prefs_cache.get(recent_key, [])
+                       if r not in base and r != "Auto"]
+            return ["Auto"] + base + recents + [PICK]
+
+        def _main_cb(parent, var, recent_key, width):
+            cb = ttk.Combobox(parent, textvariable=var,
+                              values=_make_col_values(recent_key),
+                              state="readonly", width=width,
+                              style="CB.TCombobox", font=("Helvetica Neue", 11))
+            cb.pack(side="left", fill="x", expand=True)
+            def _on_select(e):
+                if var.get() == PICK:
+                    prev = self._prefs_cache.get(recent_key.replace("_recent", ""), "Auto") or "Auto"
+                    var.set(prev)
+                    self._pick_column(var)
+                    _add_recent(self._prefs_cache, recent_key, var.get())
+                    self._save_prefs_all()
+                    cb.config(values=_make_col_values(recent_key))
+                else:
+                    _add_recent(self._prefs_cache, recent_key, var.get())
+                    self._save_prefs_all()
+                    cb.config(values=_make_col_values(recent_key))
+            cb.bind("<<ComboboxSelected>>", _on_select)
+            return cb
+
+        # Dropdown gewrapped in border-frame (zelfde look als file rows)
+        notes_outer = tk.Frame(opts, bg=BORDER, padx=1, pady=1,
+                               bd=0, highlightthickness=0)
+        notes_outer.pack(fill="x", expand=True)
+        notes_inner = tk.Frame(notes_outer, bg=SURFACE, padx=10, pady=8,
+                               bd=0, highlightthickness=0)
+        notes_inner.pack(fill="x")
+
+        cb_notes = _main_cb(notes_inner, self.notes_col, "notes_col_recent", width=30)
+
+        # ── Voorkeuren-hint + Wis-knop ────────────────────────────────────────
+        hint_row = tk.Frame(body, bg=BG)
+        hint_row.pack(fill="x", pady=(12, 12))
+
+        hint_lbl = tk.Label(hint_row,
+                            text="⚙  Meer instellingen in Voorkeuren  (⌘,)",
+                            bg=BG, fg=MUTED,
+                            font=("Helvetica Neue", 10), cursor="arrow", anchor="w")
+        hint_lbl.pack(side="left", fill="x", expand=True)
+        hint_lbl.bind("<Button-1>", lambda e: self._show_prefs())
+        hint_lbl.bind("<Enter>",    lambda e: hint_lbl.config(fg=TEXT))
+        hint_lbl.bind("<Leave>",    lambda e: hint_lbl.config(fg=MUTED))
+
+        def _clear_all():
+            self.ale_paths.clear()
+            self.pdf_paths.clear()
+            self._refresh_ale()
+            self._refresh_pdf()
+            # Log leegmaken
+            self.log_box.config(state="normal")
+            self.log_box.delete("1.0", "end")
+            self.log_box.config(state="disabled")
+
+        clear_cv = _rounded_btn(hint_row, "↺  Wis alles", _clear_all,
+                                bg=SURFACE2, hv=BORDER, fg=MUTED,
+                                font=("Helvetica Neue", 10), px=10, py=3, r=8, pbg=BG)
+        clear_cv.pack(side="right")
 
         # ── Verwerk-knop (afgeronde Canvas, full-width) ──────────────────────
         _VF = ("Helvetica Neue", 14, "bold")
@@ -1360,28 +2340,39 @@ class App:
         self.btn = tk.Canvas(body, height=_VH, bd=0, highlightthickness=0, bg=BG, cursor="arrow")
         self.btn.pack(fill="x")
 
-        def _draw_verwerk(color, label="Verwerk", fg="#FFFFFF"):
+        _BTN_TL = "#B040FF"   # diagonaal links-boven: fel violet
+        _BTN_BR = "#5814C0"   # diagonaal rechts-onder: diep paars
+
+        def _draw_verwerk(label="✦  Verwerk", darken=0.0, disabled=False):
             w = self.btn.winfo_width()
             if w < 2: return
-            _rrect(self.btn, w, _VH, _VR, color, fg, label, _VF)
+            if disabled:
+                _rrect(self.btn, w, _VH, _VR, SURFACE2, MUTED, label, _VF)
+            else:
+                _rrect_gradient(self.btn, w, _VH, _VR,
+                                _BTN_TL, _BTN_BR, "#FFFFFF", label, _VF,
+                                darken=darken)
 
         def _on_verwerk_resize(e):
-            clr = AVID_B if self._btn_enabled else SURFACE2
-            lbl = "Verwerk" if self._btn_enabled else "Bezig…"
-            _draw_verwerk(clr, lbl)
+            if self._btn_enabled: _draw_verwerk()
+            else:                 _draw_verwerk("Bezig…", disabled=True)
 
         self.btn.bind("<Configure>", _on_verwerk_resize)
 
         def _btn_enter(e):
-            if self._btn_enabled: _draw_verwerk(AVID_B_H)
+            if self._btn_enabled: _draw_verwerk(darken=0.12)
         def _btn_leave(e):
-            if self._btn_enabled: _draw_verwerk(AVID_B)
+            if self._btn_enabled: _draw_verwerk()
+        def _btn_press(e):
+            if self._btn_enabled: _draw_verwerk(darken=0.25)
         def _btn_click(e):
             if self._btn_enabled: self._run()
 
-        self.btn.bind("<Enter>",    _btn_enter)
-        self.btn.bind("<Leave>",    _btn_leave)
-        self.btn.bind("<Button-1>", _btn_click)
+        self.btn.bind("<Enter>",           _btn_enter)
+        self.btn.bind("<Leave>",           _btn_leave)
+        self.btn.bind("<ButtonPress-1>",   _btn_press)
+        self.btn.bind("<ButtonRelease-1>", lambda e: _btn_leave(e))
+        self.btn.bind("<Button-1>",        _btn_click)
 
         # Sla _draw_verwerk op voor gebruik in _process
         self._draw_verwerk = _draw_verwerk
@@ -1389,32 +2380,207 @@ class App:
         # ── Log ──────────────────────────────────────────────────────────────
         log_outer = tk.Frame(self.root, bg=BORDER, padx=1, pady=1,
                              bd=0, highlightthickness=0)
-        log_outer.pack(fill="both", expand=True, padx=22, pady=(16, 18))
+        log_outer.pack(fill="both", expand=True, padx=22, pady=(10, 18))
+
+        # Groene accentlijn links (zoals in referentieplaatje)
+        tk.Frame(log_outer, bg=SUCCESS, width=3).pack(side="left", fill="y")
+
         log_frame = tk.Frame(log_outer, bg=SURFACE, bd=0, highlightthickness=0)
         log_frame.pack(fill="both", expand=True)
 
         self.log_box = tk.Text(log_frame, bg=SURFACE, fg=MUTED,
             font=("Menlo", 10), relief="flat", bd=0, highlightthickness=0,
-            padx=14, pady=12, wrap="word", state="disabled", height=6,
+            padx=14, pady=12, wrap="word", state="disabled", height=5,
             cursor="arrow")
-        log_sb = tk.Scrollbar(log_frame, orient="vertical",
-                              command=self.log_box.yview,
-                              bg=SURFACE2, troughcolor=SURFACE,
-                              activebackground=BORDER, width=8,
-                              relief="flat", bd=0, highlightthickness=0)
-        self.log_box.configure(yscrollcommand=log_sb.set)
-        log_sb.pack(side="right", fill="y")
+
+        # Dunne canvas-scrollbar (macOS negeert bg/troughcolor op native Scrollbar)
+        _SB_W = 6
+        log_sb_cv = tk.Canvas(log_frame, width=_SB_W, bg=SURFACE,
+                              bd=0, highlightthickness=0)
+        _thumb = log_sb_cv.create_rectangle(0, 0, _SB_W, 30,
+                                            fill=BORDER, outline="", tags="thumb")
+        def _sb_set(first, last):
+            first, last = float(first), float(last)
+            h = log_sb_cv.winfo_height() or 100
+            y0, y1 = int(first * h), int(last * h)
+            if y1 - y0 < 16: y1 = y0 + 16
+            y1 = min(y1, h)
+            log_sb_cv.coords(_thumb, 1, y0, _SB_W - 1, y1)
+            log_sb_cv.itemconfig(_thumb,
+                fill=MUTED if (last - first) < 0.999 else SURFACE)
+        def _sb_click(e):
+            h = log_sb_cv.winfo_height() or 100
+            self.log_box.yview("moveto", e.y / h)
+        log_sb_cv.bind("<Button-1>", _sb_click)
+        log_sb_cv.bind("<B1-Motion>", _sb_click)
+        self.log_box.configure(yscrollcommand=_sb_set)
+        log_sb_cv.pack(side="right", fill="y")
         self.log_box.pack(side="left", fill="both", expand=True)
         self.log_box.tag_config("ok",   foreground=SUCCESS)
         self.log_box.tag_config("err",  foreground=ERROR)
         self.log_box.tag_config("info", foreground=TEXT)
 
-    def _file_row(self, parent, var, cmd, lbl_attr, drop_handler=None):
+    @staticmethod
+    def _draw_file_icon(parent, ext, color, fold_color):
+        """Canvas-bestandsicoontje (document met gevouwen hoek)."""
+        W, H, FOLD = 34, 40, 10
+        cv = tk.Canvas(parent, width=W, height=H, bg=SURFACE,
+                       bd=0, highlightthickness=0)
+        # Document-body
+        cv.create_polygon(
+            [0, 0,  W-FOLD, 0,  W, FOLD,  W, H,  0, H],
+            fill=color, outline=""
+        )
+        # Gevouwen hoekje
+        cv.create_polygon(
+            [W-FOLD, 0,  W-FOLD, FOLD,  W, FOLD],
+            fill=fold_color, outline=""
+        )
+        # Extensietekst
+        cv.create_text(W//2, H//2 + 3, text=ext,
+                       fill="white", font=("Helvetica Neue", 8, "bold"))
+        return cv
+
+    def _multi_file_widget(self, parent, paths_list, file_type):
+        """Multi-bestandswidget: scrollbare lijst + × per rij + Kies-knop."""
+        _ROW_H = 38     # hoogte per bestandsrij (px)
+        _MAX_V = 2      # max zichtbare rijen zonder scrollen
+
+        badge_color = "#8B30F5" if file_type == "ALE" else "#E8402A"
+
+        outer = tk.Frame(parent, bg=BORDER, padx=1, pady=1, bd=0, highlightthickness=0)
+        inner = tk.Frame(outer, bg=SURFACE, bd=0, highlightthickness=0)
+        inner.pack(fill="x")
+
+        # ── Scrollbare lijst (hoogte dynamisch) ───────────────────────────
+        list_host = tk.Frame(inner, bg=SURFACE)
+        # list_host wordt pas gepacked zodra er bestanden zijn
+
+        list_cv = tk.Canvas(list_host, bg=SURFACE, bd=0, highlightthickness=0,
+                            height=_ROW_H)
+        list_frame = tk.Frame(list_cv, bg=SURFACE)
+        list_sb = tk.Scrollbar(list_host, orient="vertical", command=list_cv.yview,
+                               bg=SURFACE2, troughcolor=SURFACE, width=8,
+                               relief="flat", bd=0, highlightthickness=0)
+        list_cv.configure(yscrollcommand=list_sb.set)
+        _lwin = list_cv.create_window((0, 0), window=list_frame, anchor="nw")
+
+        list_frame.bind("<Configure>",
+                        lambda e: list_cv.configure(scrollregion=list_cv.bbox("all")))
+        list_cv.bind("<Configure>",
+                     lambda e: list_cv.itemconfig(_lwin, width=e.width))
+
+        # ── Statusbalk (altijd zichtbaar) ────────────────────────────────
+        sep_line  = tk.Frame(inner, bg=BORDER, height=1)
+        # sep_line gepacked zodra er bestanden zijn
+
+        status_row = tk.Frame(inner, bg=SURFACE, padx=10, pady=7)
+        status_row.pack(fill="x")
+
+        status_lbl = tk.Label(status_row,
+                              text="Sleep bestanden hier of voeg toe…",
+                              bg=SURFACE, fg=MUTED,
+                              font=("Helvetica Neue", 10), anchor="w")
+        status_lbl.pack(side="left", fill="x", expand=True)
+
+        pick_fn = self._pick_ale if file_type == "ALE" else self._pick_pdf
+        add_cv  = _rounded_btn(status_row, "Kies…", pick_fn,
+                               bg=SURFACE2, hv=BORDER, fg=TEXT,
+                               font=("Helvetica Neue", 10), px=10, py=3, r=6,
+                               pbg=SURFACE)
+        add_cv.pack(side="right")
+
+        def _refresh():
+            for w in list_frame.winfo_children():
+                w.destroy()
+
+            n = len(paths_list)
+
+            if n == 0:
+                status_lbl.config(text="Sleep bestanden hier of voeg toe…")
+                list_host.pack_forget()
+                sep_line.pack_forget()
+            else:
+                word = "bestand" if n == 1 else "bestanden"
+                status_lbl.config(text=f"{n} {word} geselecteerd")
+
+                for i, p in enumerate(paths_list):
+                    row = tk.Frame(list_frame, bg=SURFACE, height=_ROW_H)
+                    row.pack(fill="x")
+                    row.pack_propagate(False)
+
+                    # Badge
+                    bc = tk.Canvas(row, width=32, height=18, bg=SURFACE,
+                                   bd=0, highlightthickness=0)
+                    bc.pack(side="left", padx=(10, 6), pady=10)
+                    bc.create_rectangle(0, 0, 32, 18, fill=badge_color, outline="")
+                    bc.create_text(16, 9, text=file_type,
+                                   fill="white", font=("Helvetica Neue", 8, "bold"))
+
+                    # Bestandsnaam
+                    tk.Label(row, text=Path(p).name, bg=SURFACE, fg=TEXT,
+                             font=("Helvetica Neue", 10), anchor="w").pack(
+                                 side="left", fill="x", expand=True)
+
+                    # × verwijderknop
+                    def _rm(idx=i):
+                        paths_list.pop(idx)
+                        _refresh()
+
+                    rm = tk.Label(row, text="×", bg=SURFACE, fg=MUTED,
+                                  font=("Helvetica Neue", 14), cursor="arrow",
+                                  padx=10, pady=0)
+                    rm.pack(side="right")
+                    rm.bind("<Button-1>", lambda e, fn=_rm: fn())
+                    rm.bind("<Enter>",    lambda e, w=rm: w.config(fg=ERROR))
+                    rm.bind("<Leave>",    lambda e, w=rm: w.config(fg=MUTED))
+
+                # Canvas hoogte + scrollbar
+                vis = min(n, _MAX_V)
+                list_cv.configure(height=vis * _ROW_H)
+
+                if n > _MAX_V:
+                    if not list_sb.winfo_ismapped():
+                        list_sb.pack(side="right", fill="y")
+                else:
+                    list_sb.pack_forget()
+
+                if not list_cv.winfo_ismapped():
+                    list_cv.pack(side="left", fill="both", expand=True)
+
+                # Toon host + separator boven statusbalk
+                if not list_host.winfo_ismapped():
+                    list_host.pack(fill="x", before=status_row)
+                if not sep_line.winfo_ismapped():
+                    sep_line.pack(fill="x", before=status_row)
+
+            list_frame.update_idletasks()
+            list_cv.configure(scrollregion=list_cv.bbox("all"))
+
+        if file_type == "ALE":
+            self._refresh_ale = _refresh
+        else:
+            self._refresh_pdf = _refresh
+
+        _refresh()
+        return outer
+
+    def _file_row(self, parent, var, cmd, lbl_attr, drop_handler=None, file_type=""):
         outer = tk.Frame(parent, bg=BORDER, padx=1, pady=1,
                          bd=0, highlightthickness=0)
-        inner = tk.Frame(outer, bg=SURFACE, padx=14, pady=11,
+        inner = tk.Frame(outer, bg=SURFACE, padx=12, pady=9,
                          bd=0, highlightthickness=0)
         inner.pack(fill="x")
+
+        # Bestandsicoontje
+        if file_type == "ALE":
+            icon = self._draw_file_icon(inner, "ALE", "#8B30F5", "#5A18C0")
+        elif file_type == "PDF":
+            icon = self._draw_file_icon(inner, "PDF", "#E8402A", "#AA2010")
+        else:
+            icon = None
+        if icon:
+            icon.pack(side="left", padx=(0, 12))
 
         lbl = tk.Label(inner, text="Sleep bestand hier of kies…", bg=SURFACE, fg=MUTED,
                        font=("Helvetica Neue", 11), anchor="w", cursor="arrow")
@@ -1426,7 +2592,6 @@ class App:
                                font=("Helvetica Neue", 10), px=10, py=4, r=8, pbg=SURFACE)
         kies_cv.pack(side="right")
 
-        # Drag-and-drop via native ObjC ctypes (_setup_native_dnd)
         return outer
 
     @staticmethod
@@ -1446,64 +2611,123 @@ class App:
 
     def _drop_pdf(self, event):
         p = self._parse_drop(event.data)
-        self.pdf_path.set(p)
-        self.pdf_lbl.config(text=Path(p).name, fg=TEXT)
-        self._log_direct(f"PDF:  {Path(p).name}", "info")
+        if p not in self.pdf_paths:
+            self.pdf_paths.append(p)
+            self._log_direct(f"PDF:  {Path(p).name}", "info")
+            self.root.after(0, self._refresh_pdf)
 
     def _drop_ale(self, event):
         p = self._parse_drop(event.data)
-        self.ale_path.set(p)
-        self.ale_lbl.config(text=Path(p).name, fg=TEXT)
-        self._log_direct(f"ALE:  {Path(p).name}", "info")
+        if p not in self.ale_paths:
+            self.ale_paths.append(p)
+            self._log_direct(f"ALE:  {Path(p).name}", "info")
+            self.root.after(0, self._refresh_ale)
 
     def _pick_pdf(self):
-        p = filedialog.askopenfilename(title="Kies PDF", filetypes=[("Alle bestanden","*.*")])
-        if p:
-            self.pdf_path.set(p)
-            self.pdf_lbl.config(text=Path(p).name, fg=TEXT)
-            self.log(f"PDF:  {Path(p).name}", "info")
+        paths = filedialog.askopenfilenames(title="Kies PDF bestanden",
+                                            filetypes=[("Alle bestanden", "*.*")])
+        added = 0
+        for p in paths:
+            if p not in self.pdf_paths:
+                self.pdf_paths.append(p)
+                self.log(f"PDF:  {Path(p).name}", "info")
+                added += 1
+        if added:
+            self._refresh_pdf()
 
     def _pick_ale(self):
-        p = filedialog.askopenfilename(title="Kies ALE", filetypes=[("Alle bestanden","*.*")])
-        if p:
-            self.ale_path.set(p)
-            self.ale_lbl.config(text=Path(p).name, fg=TEXT)
-            self.log(f"ALE:  {Path(p).name}", "info")
+        paths = filedialog.askopenfilenames(title="Kies ALE bestanden",
+                                            filetypes=[("Alle bestanden", "*.*")])
+        added = 0
+        for p in paths:
+            if p not in self.ale_paths:
+                self.ale_paths.append(p)
+                self.log(f"ALE:  {Path(p).name}", "info")
+                added += 1
+        if added:
+            self._refresh_ale()
 
     def _run(self):
         if not self._license_expiry:
             self.log("Geen geldige licentie. Activeer via Continuity Bridge → Licentie…", "err")
             return
-        if not self.pdf_path.get():
-            self.log("Kies eerst een PDF bestand.", "err"); return
-        if not self.ale_path.get():
-            self.log("Kies eerst een ALE bestand.", "err"); return
+        if not self.pdf_paths:
+            self.log("Kies eerst een of meer PDF bestanden.", "err"); return
+        if not self.ale_paths:
+            self.log("Kies eerst een of meer ALE bestanden.", "err"); return
         self._btn_enabled = False
-        self._draw_verwerk(SURFACE2, "Bezig…", MUTED)
+        self._draw_verwerk("Bezig…", disabled=True)
         threading.Thread(target=self._process, daemon=True).start()
 
     def _process(self):
         try:
-            clips  = parse_pdf(self.pdf_path.get(), self.log)
-            result = process_ale(self.ale_path.get(), clips, self.log,
-                                 write_rating=self.write_rating.get(),
-                                 notes_col=self.notes_col.get())
-            stem   = Path(self.ale_path.get()).stem
-            out    = Path(self.ale_path.get()).parent / f"{stem}_updated_with_notes.ALE"
-            result_bytes = result.encode("utf-8")
-            try:
-                out.write_bytes(result_bytes)
-            except OSError:
-                out = Path.home() / "Desktop" / f"{stem}_updated_with_notes.ALE"
-                out.write_bytes(result_bytes)
-            self.log(f"Klaar  —  {out.name} opgeslagen", "ok")
-            os.system(f'open "{out.parent}"')
+            # ── Stap 1: alle PDFs parsen en clips samenvoegen ────────────
+            all_clips = {}
+            for pdf_p in self.pdf_paths:
+                clips = parse_pdf(pdf_p, self.log,
+                                  write_pu=self.write_pu_in_notes.get(),
+                                  write_afg=self.write_afg_in_notes.get())
+                all_clips.update(clips)
+
+            n_pdf = len(self.pdf_paths)
+            self.log(f"Totaal: {len(all_clips)} clips uit {n_pdf} PDF('s)", "info")
+
+            # ── Stap 2: elk ALE verwerken en opslaan ─────────────────────
+            _out_dir    = self.output_dir.get().strip()
+            _out_suffix = self.output_suffix.get().strip() or "_updated_with_notes"
+            out_paths = []
+
+            for ale_p in self.ale_paths:
+                result = process_ale(ale_p, all_clips, self.log,
+                                     write_rating=self.write_rating.get(),
+                                     notes_col=(self.notes_col.get()
+                                              if self.write_notes.get() else "Uit"),
+                                     rating_col=self.rating_col.get(),
+                                     sound_notes_col=(self.sound_notes_col.get()
+                                                      if self.write_sound_notes.get() else "Uit"),
+                                     camera_notes_col=(self.camera_notes_col.get()
+                                                       if self.write_camera_notes.get() else "Uit"),
+                                     pu_col=(self.pu_col.get()
+                                             if self.write_pu_in_notes.get() else "Uit"),
+                                     pu_position=self.pu_position.get(),
+                                     afg_col=(self.afg_col.get()
+                                              if self.write_afg_in_notes.get() else "Uit"),
+                                     afg_position=self.afg_position.get(),
+                                     general_notes_col=(self.general_notes_col.get()
+                                                        if self.write_general_notes.get() else "Uit"))
+                stem    = Path(ale_p).stem
+                out_dir = Path(_out_dir) if _out_dir else Path(ale_p).parent
+                out     = out_dir / f"{stem}{_out_suffix}.ALE"
+                result_bytes = result.encode("utf-8")
+                try:
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    out.write_bytes(result_bytes)
+                except OSError:
+                    out = Path.home() / "Desktop" / f"{stem}{_out_suffix}.ALE"
+                    out.write_bytes(result_bytes)
+                out_paths.append(out)
+                self.log(f"Opgeslagen  —  {out.name}", "ok")
+
+            n_ale = len(out_paths)
+            self.log(f"✓  Klaar  —  {n_ale} ALE bestand{'en' if n_ale != 1 else ''} opgeslagen", "ok")
+            if out_paths:
+                import subprocess, sys as _sys
+                folder = str(out_paths[0].parent)
+                try:
+                    if _sys.platform == "darwin":
+                        subprocess.Popen(["open", folder])
+                    elif _sys.platform.startswith("win"):
+                        subprocess.Popen(["explorer", folder])
+                    else:
+                        subprocess.Popen(["xdg-open", folder])
+                except Exception:
+                    pass
         except Exception as e:
             self.log(f"Fout: {e}", "err")
         finally:
             def _re_enable():
                 self._btn_enabled = True
-                self._draw_verwerk(AVID_B)
+                self._draw_verwerk("✦  Verwerk")
             self.root.after(0, _re_enable)
 
     def log(self, msg, tag="info"):
