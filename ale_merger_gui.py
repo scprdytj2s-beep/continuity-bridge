@@ -1990,9 +1990,6 @@ class App:
             _helpmenu.add_command(label='Licentie…', command=_show_license_info)
             _helpmenu.add_command(label='Verwijder licentie…', command=_remove_license)
             _helpmenu.add_separator()
-            _helpmenu.add_command(label='Verkochte licenties beheren…',
-                                  command=_show_license_manager)
-            _helpmenu.add_separator()
             _helpmenu.add_command(label='Check voor updates…',
                                   command=lambda: _check_updates(silent=False))
             _menubar.add_cascade(label='Help', menu=_helpmenu)
