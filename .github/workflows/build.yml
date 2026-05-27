@@ -37,7 +37,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install --upgrade pip pyinstaller pdfplumber pillow
+        run: pip install --upgrade pip pyinstaller pdfplumber pillow pyobjc-core pyobjc-framework-Cocoa
 
       - name: Build app bundle
         run: pyinstaller continuity_bridge.spec --clean --noconfirm
@@ -89,7 +89,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install --upgrade pip pyinstaller pdfplumber pillow
+        run: pip install --upgrade pip pyinstaller pdfplumber pillow pyobjc-core pyobjc-framework-Cocoa
 
       - name: Build app bundle
         run: pyinstaller continuity_bridge.spec --clean --noconfirm
