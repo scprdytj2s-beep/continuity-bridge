@@ -837,7 +837,7 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.2 (Beta)"
+VERSION       = "1.2.1 (Beta)"
 GITHUB_REPO   = "scprdytj2s-beep/continuity-bridge"
 RELEASES_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases/latest"
@@ -1442,11 +1442,44 @@ class App:
                     status_lbl.config(fg=ERROR,
                         text="✗ Naam komt niet overeen met licentie.")
                     return
-                _license_save(serial_var.get())
-                self._license_expiry = expiry
-                status_lbl.config(fg=SUCCESS,
-                    text=f"✓ Welkom, {serial_name}!  {msg}")
-                dlg.after(1000, dlg.destroy)
+                # Server-side activatiecheck
+                status_lbl.config(fg=MUTED, text="Activatie verifiëren…")
+                _act_cv.config(state="disabled")
+                def _do_server_check():
+                    try:
+                        import urllib.request as _ur, json as _js
+                        payload = _js.dumps({
+                            "serial":       serial_var.get().strip(),
+                            "machine_uuid": _machine_uuid(),
+                        }).encode()
+                        req = _ur.Request(
+                            "https://studiomichielboesveldt.nl/api/activate",
+                            data=payload,
+                            headers={"Content-Type": "application/json",
+                                     "User-Agent": "ContinuityBridge"},
+                            method="POST",
+                        )
+                        with _ur.urlopen(req, timeout=8) as r:
+                            result = _js.loads(r.read())
+                        server_ok     = result.get("ok", True)
+                        server_reason = result.get("reason", "")
+                    except Exception:
+                        # Geen internet of server onbereikbaar → fail open
+                        server_ok, server_reason = True, ""
+                    def _finish():
+                        _act_cv.config(state="normal")
+                        if not server_ok and server_reason == "al_gebonden":
+                            status_lbl.config(fg=ERROR,
+                                text="✗ Serial al geactiveerd op een andere machine.\n"
+                                     "Neem contact op met support@studiomichielboesveldt.nl")
+                            return
+                        _license_save(serial_var.get())
+                        self._license_expiry = expiry
+                        status_lbl.config(fg=SUCCESS,
+                            text=f"✓ Welkom, {serial_name}!  {msg}")
+                        dlg.after(1000, dlg.destroy)
+                    dlg.after(0, _finish)
+                threading.Thread(target=_do_server_check, daemon=True).start()
 
             def _cancel():
                 if block:
