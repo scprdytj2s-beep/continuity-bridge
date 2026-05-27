@@ -1305,12 +1305,17 @@ class App:
         # ── Update-check ─────────────────────────────────────────────────────
         def _check_updates(silent=False):
             """Check GitHub releases. silent=True → alleen tonen bij nieuwere versie."""
-            import urllib.request, json as _json2
+            import urllib.request, json as _json2, ssl as _ssl
             def _do():
                 try:
+                    # SSL context: probeer systeemcerts, val terug op unverified
+                    try:
+                        _ctx = _ssl.create_default_context()
+                    except Exception:
+                        _ctx = _ssl._create_unverified_context()
                     req = urllib.request.Request(RELEASES_URL,
                           headers={"User-Agent": "ContinuityBridge"})
-                    with urllib.request.urlopen(req, timeout=10) as r:
+                    with urllib.request.urlopen(req, timeout=10, context=_ctx) as r:
                         releases = _json2.loads(r.read())
                     if not isinstance(releases, list) or not releases:
                         if not silent:
@@ -1391,12 +1396,16 @@ class App:
                 threading.Thread(target=_download_and_install, daemon=True).start()
 
             def _download_and_install():
-                import urllib.request as _ur2, tempfile, os, sys as _sys3
+                import urllib.request as _ur2, tempfile, os, sys as _sys3, ssl as _ssl2
                 try:
+                    try:
+                        _ctx2 = _ssl2.create_default_context()
+                    except Exception:
+                        _ctx2 = _ssl2._create_unverified_context()
                     # ── Download ──────────────────────────────────────────────
                     ext = '.exe' if _sys3.platform == 'win32' else '.dmg'
                     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-                    with _ur2.urlopen(dl_url, timeout=120) as resp:
+                    with _ur2.urlopen(dl_url, timeout=120, context=_ctx2) as resp:
                         total = int(resp.headers.get('Content-Length', 0))
                         done  = 0
                         while True:
