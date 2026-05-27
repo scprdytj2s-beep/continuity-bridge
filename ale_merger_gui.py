@@ -837,7 +837,7 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.1 (Beta)"
+VERSION       = "1.2 (Beta)"
 GITHUB_REPO   = "scprdytj2s-beep/continuity-bridge"
 RELEASES_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases/latest"
@@ -1540,6 +1540,232 @@ class App:
                     message="Licentie verwijderd. Voer een nieuw serienummer in.",
                     block=True)
 
+        # ── Verkochte licenties beheren ──────────────────────────────────────
+        _MGR_TOKEN_FILE = _LIC_DIR / "mgr_token"
+        _LICENSES_REPO  = "scprdytj2s-beep/cb-licenses"   # private repo
+
+        def _mgr_token_load():
+            try:
+                return _MGR_TOKEN_FILE.read_text().strip()
+            except Exception:
+                return ""
+
+        def _mgr_token_save(tok):
+            _LIC_DIR.mkdir(parents=True, exist_ok=True)
+            _MGR_TOKEN_FILE.write_text(tok.strip())
+
+        def _fetch_licenses_from_github(token):
+            """Haal data/licenses.json op uit private repo. Returns list of dicts."""
+            import urllib.request as _ur
+            url = (f"https://api.github.com/repos/{_LICENSES_REPO}"
+                   f"/contents/data/licenses.json")
+            req = _ur.Request(url, headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "ContinuityBridge-Manager",
+                "X-GitHub-Api-Version": "2022-11-28",
+            })
+            with _ur.urlopen(req, timeout=10) as r:
+                data = _json.loads(r.read())
+            import base64 as _b64m
+            content = _b64m.b64decode(data["content"]).decode("utf-8")
+            return _json.loads(content), data["sha"]
+
+        def _revoke_serial_on_github(token, serial_clean):
+            """Voeg serial toe aan revoked.json in publieke repo."""
+            import urllib.request as _ur
+            import base64 as _b64m
+            rev_url = (f"https://api.github.com/repos/{GITHUB_REPO}"
+                       f"/contents/revoked.json")
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "ContinuityBridge-Manager",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "Content-Type": "application/json",
+            }
+            # Fetch bestaande revoked.json
+            req = _ur.Request(rev_url, headers=headers)
+            with _ur.urlopen(req, timeout=10) as r:
+                existing = _json.loads(r.read())
+            sha     = existing["sha"]
+            revoked = _json.loads(_b64m.b64decode(existing["content"]))
+            if serial_clean not in revoked:
+                revoked.append(serial_clean)
+            new_content = _b64m.b64encode(
+                _json.dumps(revoked, indent=2).encode()).decode()
+            body = _json.dumps({
+                "message": f"revoke serial {serial_clean[:12]}…",
+                "content": new_content,
+                "sha":     sha,
+            }).encode()
+            put_req = _ur.Request(rev_url, data=body, headers=headers, method="PUT")
+            with _ur.urlopen(put_req, timeout=10):
+                pass
+
+        def _show_license_manager():
+            """Beheerdersvenster: toon alle verkochte licenties, intrekken mogelijk."""
+            win = tk.Toplevel(self.root)
+            win.title("Verkochte licenties")
+            win.configure(bg=BG)
+            win.geometry("860x540")
+            win.grab_set(); win.lift(); win.focus_force()
+
+            # Token-balk bovenaan
+            hdr = tk.Frame(win, bg=SURFACE, pady=8, padx=14)
+            hdr.pack(fill="x")
+            tk.Label(hdr, text="GitHub manager token:", bg=SURFACE, fg=MUTED,
+                     font=("Helvetica Neue", 11)).pack(side="left")
+            tok_var = tk.StringVar(value=_mgr_token_load())
+            tok_entry = tk.Entry(hdr, textvariable=tok_var, show="•", width=44,
+                                 bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
+                                 relief="flat", font=("Menlo", 10), bd=4)
+            tok_entry.pack(side="left", padx=(8, 6))
+            _mgr_token_save_btn = tk.Button(hdr, text="Opslaan & laden",
+                                            bg=AVID_B, fg="white",
+                                            font=("Helvetica Neue", 10, "bold"),
+                                            relief="flat", bd=0, cursor="hand2",
+                                            padx=10, pady=4)
+            hdr.pack(fill="x")
+
+            # Status-label
+            status_lbl = tk.Label(win, text="", bg=BG, fg=MUTED,
+                                   font=("Helvetica Neue", 10))
+            status_lbl.pack(anchor="w", padx=14, pady=(6, 2))
+
+            # Tabel-frame
+            tbl_frame = tk.Frame(win, bg=BG)
+            tbl_frame.pack(fill="both", expand=True, padx=14, pady=(0, 10))
+
+            cols = ("naam", "email", "serial", "gekocht", "geldig_tm", "status")
+            hdrs = ("Naam", "E-mail", "Serial", "Gekocht", "Geldig t/m", "Status")
+            widths = (120, 180, 210, 80, 80, 70)
+
+            style = ttk.Style()
+            style.configure("Lic.Treeview",
+                background=SURFACE, foreground=TEXT,
+                fieldbackground=SURFACE, rowheight=24,
+                font=("Helvetica Neue", 11))
+            style.configure("Lic.Treeview.Heading",
+                background=SURFACE2, foreground=MUTED,
+                font=("Helvetica Neue", 10, "bold"))
+            style.map("Lic.Treeview", background=[("selected", AVID_B)])
+
+            vsb = tk.Scrollbar(tbl_frame, orient="vertical", bg=SURFACE2)
+            tree = ttk.Treeview(tbl_frame, columns=cols, show="headings",
+                                 style="Lic.Treeview",
+                                 yscrollcommand=vsb.set)
+            vsb.config(command=tree.yview)
+            for c, h, w in zip(cols, hdrs, widths):
+                tree.heading(c, text=h)
+                tree.column(c, width=w, minwidth=w, anchor="w")
+            vsb.pack(side="right", fill="y")
+            tree.pack(side="left", fill="both", expand=True)
+
+            # Intrek-knop onderaan
+            btn_row = tk.Frame(win, bg=BG)
+            btn_row.pack(fill="x", padx=14, pady=(0, 12))
+            revoke_btn = tk.Button(btn_row, text="⊘  Intrek geselecteerde licentie",
+                                   bg=ERROR, fg="white",
+                                   font=("Helvetica Neue", 11, "bold"),
+                                   relief="flat", bd=0, cursor="hand2",
+                                   padx=12, pady=6, state="disabled")
+            revoke_btn.pack(side="left")
+            count_lbl = tk.Label(btn_row, text="", bg=BG, fg=MUTED,
+                                  font=("Helvetica Neue", 10))
+            count_lbl.pack(side="right")
+
+            _licenses_cache = []   # mutable closure list
+
+            def _load_data():
+                token = tok_var.get().strip()
+                if not token:
+                    status_lbl.config(text="Voer je GitHub manager token in.", fg=ERROR)
+                    return
+                _mgr_token_save(token)
+                status_lbl.config(text="Laden…", fg=MUTED)
+                revoke_btn.config(state="disabled")
+
+                def _fetch():
+                    try:
+                        entries, _ = _fetch_licenses_from_github(token)
+                        def _render():
+                            tree.delete(*tree.get_children())
+                            _licenses_cache.clear()
+                            _licenses_cache.extend(entries)
+                            today = _date.today()
+                            for e in entries:
+                                serial_clean = e.get("serial","").upper().replace(" ","")
+                                # bepaal vervaldatum via serial-decode
+                                try:
+                                    _, expiry, _, _ = _serial_verify(e.get("serial",""))
+                                    exp_str = expiry.strftime("%d-%m-%Y") if expiry else "?"
+                                    if e.get("revoked"):
+                                        status = "Ingetrokken"
+                                    elif expiry and today >= expiry:
+                                        status = "Verlopen"
+                                    else:
+                                        status = "Geldig"
+                                except Exception:
+                                    exp_str = "?"
+                                    status  = "?"
+                                gekocht = e.get("issuedAt","")[:10] if e.get("issuedAt") else "?"
+                                tree.insert("", "end", values=(
+                                    e.get("name",""),
+                                    e.get("email",""),
+                                    e.get("serial",""),
+                                    gekocht,
+                                    exp_str,
+                                    status,
+                                ))
+                            count_lbl.config(text=f"{len(entries)} licentie(s)")
+                            status_lbl.config(text="Geladen.", fg=SUCCESS)
+                        self.root.after(0, _render)
+                    except Exception as ex:
+                        self.root.after(0, lambda: status_lbl.config(
+                            text=f"Fout: {ex}", fg=ERROR))
+                threading.Thread(target=_fetch, daemon=True).start()
+
+            def _on_select(e):
+                revoke_btn.config(
+                    state="normal" if tree.selection() else "disabled")
+
+            def _do_revoke():
+                sel = tree.selection()
+                if not sel: return
+                vals = tree.item(sel[0])["values"]
+                serial_str = vals[2]
+                naam = vals[0]
+                if not tk.messagebox.askyesno("Licentie intrekken",
+                        f"Licentie van {naam} intrekken?\n\n"
+                        f"{serial_str}\n\n"
+                        "Dit kan niet ongedaan worden gemaakt."):
+                    return
+                token = tok_var.get().strip()
+                status_lbl.config(text="Licentie intrekken…", fg=MUTED)
+                serial_clean = serial_str.upper().replace(" ", "")
+
+                def _revoke():
+                    try:
+                        _revoke_serial_on_github(token, serial_clean)
+                        self.root.after(0, lambda: (
+                            status_lbl.config(text=f"Ingetrokken: {serial_clean[:16]}…", fg=SUCCESS),
+                            _load_data()
+                        ))
+                    except Exception as ex:
+                        self.root.after(0, lambda: status_lbl.config(
+                            text=f"Fout bij intrekken: {ex}", fg=ERROR))
+                threading.Thread(target=_revoke, daemon=True).start()
+
+            _mgr_token_save_btn.config(command=_load_data)
+            _mgr_token_save_btn.pack(side="left", padx=(8, 6))
+            tree.bind("<<TreeviewSelect>>", _on_select)
+            revoke_btn.config(command=_do_revoke)
+
+            # Auto-laden als token al opgeslagen is
+            if tok_var.get().strip():
+                win.after(200, _load_data)
+
         # ── Revocatielijst ophalen vóór licenticheck ─────────────────────────
         # Blokkeer main thread kort (max 3s) zodat check altijd actuele lijst heeft.
         # Na startup: background thread herhaalt check om ook later-ingetrokken licenties
@@ -1584,6 +1810,9 @@ class App:
             _helpmenu = tk.Menu(_menubar, tearoff=False)
             _helpmenu.add_command(label='Licentie…', command=_show_license_info)
             _helpmenu.add_command(label='Verwijder licentie…', command=_remove_license)
+            _helpmenu.add_separator()
+            _helpmenu.add_command(label='Verkochte licenties beheren…',
+                                  command=_show_license_manager)
             _helpmenu.add_separator()
             _helpmenu.add_command(label='Check voor updates…',
                                   command=lambda: _check_updates(silent=False))
@@ -1967,9 +2196,18 @@ class App:
         def _poll_drops():
             """Draait periodiek in de normale Tk event-loop — thread state altijd geldig."""
             ale_added = pdf_added = False
+            _first = True
             try:
                 while True:
                     filepath = _drop_queue.get_nowait()
+                    # Sluit open dropdown bij eerste bestand in deze batch
+                    if _first:
+                        _first = False
+                        try:
+                            app_ref.root.focus_force()
+                            app_ref.root.event_generate('<Button-1>', x=0, y=0)
+                        except Exception:
+                            pass
                     p = Path(filepath)
                     ext = p.suffix.lower()
                     if ext == ".pdf":
