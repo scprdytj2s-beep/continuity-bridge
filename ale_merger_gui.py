@@ -1312,7 +1312,6 @@ class App:
                           headers={"User-Agent": "ContinuityBridge"})
                     with urllib.request.urlopen(req, timeout=10) as r:
                         releases = _json2.loads(r.read())
-                    # /releases geeft een lijst terug; pak de meest recente.
                     if not isinstance(releases, list) or not releases:
                         if not silent:
                             self.root.after(0, lambda: tk.messagebox.showinfo(
@@ -1327,21 +1326,25 @@ class App:
                         nums = re.findall(r'\d+', v)
                         return tuple(int(x) for x in nums)
                     newer = _vt(latest) > _vt(VERSION)
-                    def _show():
-                        if newer:
-                            if tk.messagebox.askyesno(
-                                "Update beschikbaar",
-                                f"Versie {latest} is beschikbaar (jij hebt {VERSION}).\n"
-                                "Openen in browser?"):
-                                import webbrowser
-                                webbrowser.open(RELEASES_PAGE)
-                        elif not silent:
-                            tk.messagebox.showinfo(
-                                "Geen updates",
-                                f"Je hebt de nieuwste versie ({VERSION}).")
-                    self.root.after(0, _show)
+                    if newer:
+                        # Zoek het juiste asset op basis van platform/arch
+                        import platform as _plat, sys as _sys2
+                        assets = data.get("assets", [])
+                        if _sys2.platform == 'win32':
+                            want = 'ContinuityBridge.exe'
+                        elif _plat.machine() == 'arm64':
+                            want = 'ContinuityBridge-Silicon.dmg'
+                        else:
+                            want = 'ContinuityBridge-Intel.dmg'
+                        asset = next((a for a in assets if a['name'] == want), None)
+                        dl_url = asset['browser_download_url'] if asset else None
+                        self.root.after(0, lambda lv=latest, url=dl_url:
+                                        _show_update_dialog(lv, url))
+                    elif not silent:
+                        self.root.after(0, lambda: tk.messagebox.showinfo(
+                            "Geen updates",
+                            f"Je hebt de nieuwste versie ({VERSION})."))
                 except Exception:
-                    # Bij netwerk-problemen alleen bij expliciete check een zachte melding
                     if not silent:
                         self.root.after(0, lambda: tk.messagebox.showinfo(
                             "Update-check",
@@ -1349,6 +1352,149 @@ class App:
                             "Controleer je internetverbinding of kijk op:\n"
                             f"github.com/{GITHUB_REPO}/releases"))
             threading.Thread(target=_do, daemon=True).start()
+
+        def _show_update_dialog(latest_version, dl_url):
+            """In-app update dialog met progress bar en automatische herstart."""
+            import webbrowser as _wb
+            dlg = tk.Toplevel(self.root)
+            dlg.title("Update beschikbaar")
+            dlg.configure(bg=BG)
+            dlg.resizable(False, False)
+            dlg.geometry("420x230")
+            dlg.grab_set()
+
+            tk.Label(dlg, text=f"Versie {latest_version} beschikbaar",
+                     bg=BG, fg=TEXT, font=("Helvetica Neue", 14, "bold")).pack(pady=(24, 4))
+            tk.Label(dlg, text=f"Jij hebt {VERSION}",
+                     bg=BG, fg=MUTED, font=("Helvetica Neue", 11)).pack()
+
+            prog_frame = tk.Frame(dlg, bg=BG)
+            prog_frame.pack(fill="x", padx=36, pady=(18, 4))
+            prog = ttk.Progressbar(prog_frame, length=348, mode='determinate')
+            prog.pack()
+
+            status_lbl = tk.Label(dlg, text="", bg=BG, fg=MUTED,
+                                  font=("Helvetica Neue", 10))
+            status_lbl.pack(pady=(0, 12))
+
+            btn_frame = tk.Frame(dlg, bg=BG)
+            btn_frame.pack()
+
+            def _fallback():
+                _wb.open(RELEASES_PAGE); dlg.destroy()
+
+            def _start():
+                if not dl_url:
+                    _fallback(); return
+                upd_cv.config(state="disabled")
+                later_cv.config(state="disabled")
+                threading.Thread(target=_download_and_install, daemon=True).start()
+
+            def _download_and_install():
+                import urllib.request as _ur2, tempfile, os, sys as _sys3
+                try:
+                    # ── Download ──────────────────────────────────────────────
+                    ext = '.exe' if _sys3.platform == 'win32' else '.dmg'
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+                    with _ur2.urlopen(dl_url, timeout=120) as resp:
+                        total = int(resp.headers.get('Content-Length', 0))
+                        done  = 0
+                        while True:
+                            chunk = resp.read(65536)
+                            if not chunk:
+                                break
+                            tmp.write(chunk)
+                            done += len(chunk)
+                            if total:
+                                dlg.after(0, lambda p=done/total*100: prog.config(value=p))
+                            dlg.after(0, lambda d=done:
+                                status_lbl.config(text=f"Downloaden… {d//1024} KB"))
+                    tmp.close()
+                    tmp_path = tmp.name
+
+                    dlg.after(0, lambda: status_lbl.config(text="Installeren…"))
+
+                    if _sys3.platform == 'win32':
+                        import subprocess as _sp3
+                        _sp3.Popen([tmp_path], shell=True)
+                        dlg.after(0, _finish_win)
+                    else:
+                        import subprocess as _sp3, glob, shutil
+                        # Mount DMG
+                        r = _sp3.run(
+                            ['hdiutil', 'attach', '-quiet', '-nobrowse',
+                             '-noverify', tmp_path],
+                            capture_output=True, text=True)
+                        mount_pt = None
+                        for line in r.stdout.strip().splitlines():
+                            parts = line.split('\t')
+                            if len(parts) >= 3 and '/Volumes/' in parts[-1]:
+                                mount_pt = parts[-1].strip()
+                        if not mount_pt:
+                            raise RuntimeError("DMG mounten mislukt")
+                        apps = glob.glob(os.path.join(mount_pt, '*.app'))
+                        if not apps:
+                            raise RuntimeError("Geen .app in DMG")
+                        new_app = apps[0]
+
+                        # Installeer — vervang huidige .app
+                        if getattr(_sys3, 'frozen', False):
+                            install_path = str(Path(_sys3.executable).parents[2])
+                        else:
+                            install_path = f"/Applications/{os.path.basename(new_app)}"
+
+                        if os.path.exists(install_path):
+                            shutil.rmtree(install_path)
+                        shutil.copytree(new_app, install_path)
+                        _sp3.run(['hdiutil', 'detach', '-quiet', mount_pt],
+                                 capture_output=True)
+                        os.unlink(tmp_path)
+                        dlg.after(0, lambda ip=install_path: _finish_mac(ip))
+
+                except Exception as exc:
+                    dlg.after(0, lambda e=str(exc): _on_error(e))
+
+            def _finish_mac(install_path):
+                prog.config(value=100)
+                status_lbl.config(fg=SUCCESS, text="Update klaar!")
+                upd_cv.pack_forget()
+                later_cv.pack_forget()
+                rst = _rounded_btn(btn_frame, "🔄  Herstart app", lambda: _do_restart(install_path),
+                                   bg=AVID_B, hv=AVID_B_H, fg="white",
+                                   font=("Helvetica Neue", 11, "bold"),
+                                   px=20, py=7, r=10, pbg=BG)
+                rst.pack(side="left", padx=(0, 10))
+                lat = _rounded_btn(btn_frame, "Later", dlg.destroy,
+                                   bg=SURFACE2, hv=BORDER2, fg=MUTED,
+                                   font=("Helvetica Neue", 11),
+                                   px=16, py=7, r=10, pbg=BG)
+                lat.pack(side="left")
+
+            def _finish_win():
+                prog.config(value=100)
+                status_lbl.config(fg=SUCCESS, text="Installer gestart — volg de instructies.")
+                later_cv.config(state="normal")
+
+            def _do_restart(install_path):
+                import subprocess as _sp4, sys as _sys4
+                _sp4.Popen(['open', '-n', '-a', install_path])
+                _sys4.exit(0)
+
+            def _on_error(err):
+                status_lbl.config(fg=ERROR, text=f"Fout: {err[:60]}")
+                upd_cv.config(state="normal")
+                later_cv.config(state="normal")
+
+            upd_cv = _rounded_btn(btn_frame, "Update & Herstart", _start,
+                                   bg=AVID_B, hv=AVID_B_H, fg="white",
+                                   font=("Helvetica Neue", 11, "bold"),
+                                   px=20, py=7, r=10, pbg=BG)
+            upd_cv.pack(side="left", padx=(0, 10))
+            later_cv = _rounded_btn(btn_frame, "Later", dlg.destroy,
+                                    bg=SURFACE2, hv=BORDER2, fg=MUTED,
+                                    font=("Helvetica Neue", 11),
+                                    px=16, py=7, r=10, pbg=BG)
+            later_cv.pack(side="left")
 
         # ── About-venster ────────────────────────────────────────────────────
         def _show_about():
