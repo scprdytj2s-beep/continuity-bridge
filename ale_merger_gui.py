@@ -674,7 +674,7 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
         # Stars altijd toevoegen
         if "Stars" not in col_headers:
             col_headers.append("Stars")
-            log("Kolom 'Stars' toegevoegd aan ALE (LVB-formaat).", "info")
+            log("Kolom 'Stars' toegevoegd aan ALE (Sound Notes).", "info")
         stars_idx = col_headers.index("Stars")
 
         # Sound Notes kolom
