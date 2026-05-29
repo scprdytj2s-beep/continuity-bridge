@@ -562,6 +562,25 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                     if clip not in clips:
                         clips[clip] = {"circle": circle, "scene": scene, "description": description, "take_notes": notes}
 
+    # ── Aangepaste layouts als fallback ──────────────────────────────────────
+    if not clips:
+        with pdfplumber.open(pdf_path) as pdf2:
+            for page2 in pdf2.pages:
+                for tbl in page2.extract_tables():
+                    if not tbl or len(tbl) < 2:
+                        continue
+                    headers = [str(c or "").strip() for c in tbl[0]]
+                    layout  = _find_layout(headers)
+                    if layout:
+                        clips.update(_parse_pdf_custom(pdf_path, layout, log))
+                        break
+                if clips:
+                    break
+
+    # Onbekend formaat — signaal voor de mapper UI
+    if not clips:
+        return None
+
     v = sum(1 for x in clips.values() if x["circle"] == "V")
     x = sum(1 for x in clips.values() if x["circle"] == "X")
     log(f"PDF gelezen: {len(clips)} clips  —  V: {v}  |  X: {x}", "info")
@@ -1079,6 +1098,100 @@ def _rounded_btn(parent, text, cmd, bg, hv, fg, font, px=14, py=7, r=10, pbg=Non
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# AANGEPASTE RAPPORT-LAYOUTS  (opslaan in ~/.continuitybridge/layouts.json)
+# ---------------------------------------------------------------------------
+import json as _json_layouts
+
+_LAYOUTS_FILE = Path.home() / ".continuitybridge" / "layouts.json"
+
+def _load_layouts():
+    try:
+        return _json_layouts.loads(_LAYOUTS_FILE.read_text())
+    except Exception:
+        return []
+
+def _save_layout(entry):
+    layouts = _load_layouts()
+    # vervang bestaand met dezelfde fingerprint
+    layouts = [l for l in layouts if l.get("fingerprint") != entry["fingerprint"]]
+    layouts.append(entry)
+    _LAYOUTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _LAYOUTS_FILE.write_text(_json_layouts.dumps(layouts, indent=2))
+
+def _fingerprint_table(headers):
+    """Stabiele fingerprint op basis van kolomkoppen."""
+    return "|".join(sorted(h.strip() for h in headers if h and h.strip()))
+
+def _find_layout(headers):
+    """Geeft opgeslagen layout terug als fingerprint matcht, anders None."""
+    fp = _fingerprint_table(headers)
+    for l in _load_layouts():
+        if l.get("fingerprint") == fp:
+            return l
+    return None
+
+def _parse_pdf_custom(pdf_path, layout, log):
+    """Parseer PDF aan de hand van een opgeslagen kolomtoewijzing."""
+    mapping  = layout.get("mapping", {})
+    col_take = mapping.get("take")
+    col_note = mapping.get("note")
+    col_rate = mapping.get("rating")
+    col_slat = mapping.get("slate")
+    col_roll = mapping.get("camera_roll")
+    clips    = {}
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            for tbl in page.extract_tables():
+                if not tbl or len(tbl) < 2:
+                    continue
+                headers = [str(c or "").strip() for c in tbl[0]]
+                fp = _fingerprint_table(headers)
+                if fp != layout.get("fingerprint"):
+                    continue
+
+                def ci(col):
+                    if col and col in headers:
+                        return headers.index(col)
+                    return None
+
+                ti = ci(col_take); ni = ci(col_note)
+                ri = ci(col_rate); si = ci(col_slat)
+                roi = ci(col_roll)
+
+                for row in tbl[1:]:
+                    def cell(idx):
+                        if idx is None or idx >= len(row):
+                            return ""
+                        return str(row[idx] or "").strip()
+
+                    take  = cell(ti)
+                    note  = cell(ni)
+                    rate  = cell(ri)
+                    slate = cell(si)
+                    roll  = cell(roi)
+
+                    if not take:
+                        continue
+
+                    key = f"{slate}-{take.zfill(2)}" if slate else take.zfill(2)
+                    clips[key] = {
+                        "circle":     rate,
+                        "scene":      slate,
+                        "description": "",
+                        "take_notes": note,
+                    }
+                    if roll:
+                        clips[key]["camera_roll"] = roll
+
+    if clips:
+        log(f"Aangepaste layout '{layout.get('name','?')}': "
+            f"{len(clips)} clip(s) herkend.", "info")
+    return clips
+
+
+# ---------------------------------------------------------------------------
 # VOORKEUREN  (opslaan in ~/.continuitybridge/prefs.json)
 # ---------------------------------------------------------------------------
 import json as _json_prefs
@@ -1504,6 +1617,257 @@ class App:
                                     font=("Helvetica Neue", 11),
                                     px=16, py=7, r=10, pbg=BG)
             later_cv.pack(side="left")
+
+        # ── Layout Mapper ────────────────────────────────────────────────────
+        def _show_layout_mapper(pdf_path, on_done):
+            """Toon dialoog voor onbekend rapport-formaat. on_done(clips|None)."""
+            import pdfplumber as _plb
+
+            # Haal eerste tabel op
+            sample_headers = []
+            sample_rows    = []
+            try:
+                with _plb.open(pdf_path) as pdf:
+                    for page in pdf.pages:
+                        for tbl in page.extract_tables():
+                            if tbl and len(tbl) >= 2:
+                                sample_headers = [str(c or "").strip() for c in tbl[0]]
+                                sample_rows    = [[str(c or "").strip() for c in r]
+                                                  for r in tbl[1:6]]
+                                break
+                        if sample_headers:
+                            break
+            except Exception:
+                pass
+
+            if not sample_headers:
+                self.log("Rapport niet herkend en geen tabel gevonden in PDF.", "warn")
+                on_done(None)
+                return
+
+            dlg = tk.Toplevel(self.root)
+            dlg.title("Rapport herkennen")
+            dlg.configure(bg=BG)
+            dlg.resizable(True, True)
+            dlg.geometry("680x560")
+            dlg.grab_set()
+
+            import os as _os2
+            fname = _os2.path.basename(pdf_path)
+            tk.Label(dlg, text="Onbekend rapport-formaat",
+                     bg=BG, fg=TEXT, font=("Helvetica Neue", 14, "bold")).pack(
+                anchor="w", padx=24, pady=(20, 2))
+            tk.Label(dlg, text=f"{fname}  —  wijs aan welke kolom wat betekent.",
+                     bg=BG, fg=MUTED, font=("Helvetica Neue", 11)).pack(
+                anchor="w", padx=24, pady=(0, 14))
+
+            # Tabel preview
+            tbl_frame = tk.Frame(dlg, bg=SURFACE2,
+                                 highlightbackground=BORDER, highlightthickness=1)
+            tbl_frame.pack(fill="x", padx=24, pady=(0, 16))
+
+            FIELD_OPTIONS = ["— negeer —", "Slate / Scene", "Take",
+                             "Opmerking / Note", "Rating (V/X)", "Camerarol"]
+
+            col_vars = []  # StringVar per kolom
+            for ci2, hdr in enumerate(sample_headers):
+                col_f = tk.Frame(tbl_frame, bg=SURFACE2)
+                col_f.grid(row=0, column=ci2, padx=6, pady=8, sticky="nw")
+                tk.Label(col_f, text=hdr or f"(kolom {ci2+1})",
+                         bg=SURFACE2, fg=ACCENT2,
+                         font=("Helvetica Neue", 10, "bold")).pack(anchor="w")
+                var = tk.StringVar(value="— negeer —")
+                # Slim voorstel op basis van kolomnaam
+                h_low = hdr.lower()
+                if any(k in h_low for k in ("take", "tak")):
+                    var.set("Take")
+                elif any(k in h_low for k in ("scene", "slate", "scèn", "scen")):
+                    var.set("Slate / Scene")
+                elif any(k in h_low for k in ("opmerking", "note", "comment", "descr")):
+                    var.set("Opmerking / Note")
+                elif any(k in h_low for k in ("rating", "circle", "beoord", "✓", "v/x")):
+                    var.set("Rating (V/X)")
+                elif any(k in h_low for k in ("camera", "roll", "tape", "kaart", "card")):
+                    var.set("Camerarol")
+                col_vars.append(var)
+                om = tk.OptionMenu(col_f, var, *FIELD_OPTIONS)
+                om.config(bg=SURFACE2, fg=TEXT, activebackground=BORDER2,
+                          font=("Helvetica Neue", 9), width=12)
+                om["menu"].config(bg=SURFACE2, fg=TEXT)
+                om.pack(anchor="w", pady=2)
+                # Preview eerste paar waarden
+                for row2 in sample_rows[:3]:
+                    val = row2[ci2] if ci2 < len(row2) else ""
+                    tk.Label(col_f, text=val[:18] or "–",
+                             bg=SURFACE2, fg=MUTED,
+                             font=("Helvetica Neue", 9)).pack(anchor="w")
+
+            # Naam voor deze layout
+            name_row = tk.Frame(dlg, bg=BG)
+            name_row.pack(fill="x", padx=24, pady=(0, 12))
+            tk.Label(name_row, text="Naam voor dit formaat:",
+                     bg=BG, fg=MUTED, font=("Helvetica Neue", 11)).pack(
+                side="left", padx=(0, 10))
+            name_var = tk.StringVar(value=fname.split(".")[0])
+            tk.Entry(name_row, textvariable=name_var, bg=SURFACE2, fg=TEXT,
+                     insertbackground=TEXT, relief="flat",
+                     font=("Helvetica Neue", 11), width=28).pack(side="left")
+
+            status_lbl = tk.Label(dlg, text="", bg=BG, fg=MUTED,
+                                  font=("Helvetica Neue", 10))
+            status_lbl.pack(pady=(0, 6))
+
+            btn_row = tk.Frame(dlg, bg=BG)
+            btn_row.pack(pady=(0, 20))
+
+            def _confirm():
+                mapping = {}
+                FIELD_MAP = {
+                    "Slate / Scene":    "slate",
+                    "Take":             "take",
+                    "Opmerking / Note": "note",
+                    "Rating (V/X)":     "rating",
+                    "Camerarol":        "camera_roll",
+                }
+                for ci3, var in enumerate(col_vars):
+                    field = FIELD_MAP.get(var.get())
+                    if field:
+                        mapping[field] = sample_headers[ci3]
+                if "take" not in mapping:
+                    status_lbl.config(fg=ERROR, text="Wijs minimaal de kolom 'Take' aan.")
+                    return
+                layout = {
+                    "fingerprint": _fingerprint_table(sample_headers),
+                    "name":        name_var.get().strip() or fname,
+                    "mapping":     mapping,
+                }
+                _save_layout(layout)
+                clips = _parse_pdf_custom(pdf_path, layout, self.log)
+                dlg.destroy()
+                on_done(clips if clips else None)
+
+            def _skip():
+                dlg.destroy()
+                on_done(None)
+
+            _rounded_btn(btn_row, "Herken & verwerk", _confirm,
+                         bg=AVID_B, hv=AVID_B_H, fg="white",
+                         font=("Helvetica Neue", 11, "bold"),
+                         px=20, py=7, r=10, pbg=BG).pack(side="left", padx=(0, 10))
+            _rounded_btn(btn_row, "Overslaan", _skip,
+                         bg=SURFACE2, hv=BORDER2, fg=MUTED,
+                         font=("Helvetica Neue", 11),
+                         px=16, py=7, r=10, pbg=BG).pack(side="left")
+
+        # ── FAQ-venster ──────────────────────────────────────────────────────
+        def _show_faq():
+            FAQ = [
+                ("Hoe importeer ik het verwerkte ALE terug in Avid?",
+                 "Ga in Avid naar Preferences → User → Import → Shot Log.\n"
+                 "Kies onder Events de optie 'Merge events with known master clips'.\n"
+                 "Zo voegt Avid de comments en ratings toe aan je bestaande clips "
+                 "in plaats van nieuwe clips aan te maken."),
+                ("Welke PDF-formaten worden ondersteund?",
+                 "Continuity Bridge ondersteunt de meeste gangbare continuïteitsrapporten. "
+                 "Werkt jouw rapport niet goed? Stuur het op via "
+                 "support@studiomichielboesveldt.nl en we kijken ernaar."),
+                ("Verdwijnt mijn info na het maken van een multiclip?",
+                 "Dat kan. Importeer de ALE altijd vóórdat je multiclips aanmaakt. "
+                 "Avid draagt metadata niet automatisch over aan bestaande multiclips."),
+                ("Ik krijg een waarschuwing dat de app van een onbekende ontwikkelaar is — wat nu?",
+                 "Dit is een standaard macOS-beveiliging voor apps die niet via de App Store "
+                 "zijn gedownload. Je kunt dit veilig negeren: ga naar "
+                 "Systeeminstellingen → Privacy en beveiliging en klik op 'Toch openen'.\n"
+                 "We werken aan een Apple Developer-registratie zodat deze waarschuwing "
+                 "in de toekomst niet meer verschijnt."),
+                ("Werkt Continuity Bridge offline?",
+                 "Ja, volledig. Na activatie heeft de app geen internetverbinding nodig. "
+                 "Verwerking gebeurt lokaal op je Mac of pc."),
+                ("Kan ik de licentie op meerdere Macs gebruiken?",
+                 "Een licentie is gekoppeld aan één machine. Heb je een nieuwe Mac? "
+                 "Neem contact op via support@studiomichielboesveldt.nl en we lossen het op."),
+                ("Wat gebeurt er als mijn licentie verloopt?",
+                 "Na een jaar stopt de app met verwerken totdat je verlengt. "
+                 "Je bestanden blijven gewoon intact — er verdwijnt niets."),
+                ("Mijn clips worden niet herkend — wat nu?",
+                 "Controleer of de clipnamen in je ALE overeenkomen met de namen in het "
+                 "continuïteitsrapport. Kleine afwijkingen in naamgeving kunnen zorgen voor "
+                 "een mismatch. Neem anders contact op via support@studiomichielboesveldt.nl."),
+            ]
+
+            win = tk.Toplevel(self.root)
+            win.title("FAQ — Continuity Bridge")
+            win.configure(bg=BG)
+            win.resizable(False, True)
+            win.geometry("560x520")
+
+            # Scrollable container
+            canvas = tk.Canvas(win, bg=BG, bd=0, highlightthickness=0)
+            scrollbar = tk.Scrollbar(win, orient="vertical", command=canvas.yview)
+            canvas.configure(yscrollcommand=scrollbar.set)
+            scrollbar.pack(side="right", fill="y")
+            canvas.pack(side="left", fill="both", expand=True)
+
+            frame = tk.Frame(canvas, bg=BG)
+            canvas_window = canvas.create_window((0, 0), window=frame, anchor="nw")
+
+            def _on_resize(e):
+                canvas.itemconfig(canvas_window, width=e.width)
+            canvas.bind("<Configure>", _on_resize)
+
+            def _on_frame_configure(e):
+                canvas.configure(scrollregion=canvas.bbox("all"))
+            frame.bind("<Configure>", _on_frame_configure)
+
+            # Mousewheel
+            def _on_scroll(e):
+                canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
+            canvas.bind_all("<MouseWheel>", _on_scroll)
+            win.bind("<Destroy>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+            tk.Label(frame, text="FAQ", bg=BG, fg=TEXT,
+                     font=("Helvetica Neue", 16, "bold")).pack(
+                anchor="w", padx=28, pady=(24, 4))
+            tk.Label(frame, text="Veelgestelde vragen over Continuity Bridge",
+                     bg=BG, fg=MUTED, font=("Helvetica Neue", 11)).pack(
+                anchor="w", padx=28, pady=(0, 20))
+
+            for q, a in FAQ:
+                item = tk.Frame(frame, bg=SURFACE2,
+                                highlightbackground=BORDER, highlightthickness=1)
+                item.pack(fill="x", padx=20, pady=4)
+
+                # Question row (clickable)
+                q_var = tk.BooleanVar(value=False)
+                a_frame = tk.Frame(item, bg=SURFACE2)
+
+                def _toggle(af=a_frame, qv=q_var, it=item):
+                    qv.set(not qv.get())
+                    if qv.get():
+                        af.pack(fill="x", padx=16, pady=(0, 14))
+                    else:
+                        af.pack_forget()
+
+                q_btn = tk.Frame(item, bg=SURFACE2, cursor="arrow")
+                q_btn.pack(fill="x")
+                tk.Label(q_btn, text=q, bg=SURFACE2, fg=TEXT,
+                         font=("Helvetica Neue", 12, "bold"),
+                         wraplength=460, justify="left",
+                         anchor="w").pack(side="left", padx=16, pady=14,
+                                          fill="x", expand=True)
+                tk.Label(q_btn, text="+", bg=SURFACE2, fg=ACCENT2,
+                         font=("Helvetica Neue", 14)).pack(side="right", padx=16)
+                q_btn.bind("<Button-1>", lambda e, t=_toggle: t())
+                for child in q_btn.winfo_children():
+                    child.bind("<Button-1>", lambda e, t=_toggle: t())
+
+                # Answer
+                tk.Label(a_frame, text=a, bg=SURFACE2, fg=MUTED,
+                         font=("Helvetica Neue", 11),
+                         wraplength=480, justify="left",
+                         anchor="nw").pack(fill="x")
+
+            tk.Frame(frame, bg=BG, height=20).pack()
 
         # ── About-venster ────────────────────────────────────────────────────
         def _show_about():
@@ -1998,6 +2362,8 @@ class App:
             _helpmenu = tk.Menu(_menubar, tearoff=False)
             _helpmenu.add_command(label='Licentie…', command=_show_license_info)
             _helpmenu.add_command(label='Verwijder licentie…', command=_remove_license)
+            _helpmenu.add_separator()
+            _helpmenu.add_command(label='FAQ…', command=_show_faq)
             _helpmenu.add_separator()
             _helpmenu.add_command(label='Check voor updates…',
                                   command=lambda: _check_updates(silent=False))
@@ -3090,6 +3456,17 @@ class App:
                 clips = parse_pdf(pdf_p, self.log,
                                   write_pu=self.write_pu_in_notes.get(),
                                   write_afg=self.write_afg_in_notes.get())
+                if clips is None:
+                    # Onbekend formaat → layout mapper tonen op main thread
+                    result_holder = [None]
+                    done_event = threading.Event()
+                    def _show_mapper(p=pdf_p, rh=result_holder, ev=done_event):
+                        _show_layout_mapper(p, lambda mapped: (rh.__setitem__(0, mapped), ev.set()))
+                    self.root.after(0, _show_mapper)
+                    done_event.wait()
+                    if result_holder[0]:
+                        all_clips.update(result_holder[0])
+                    continue
                 all_clips.update(clips)
 
             n_pdf = len(self.pdf_paths)
