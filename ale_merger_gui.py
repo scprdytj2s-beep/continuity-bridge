@@ -1906,13 +1906,13 @@ class App:
             ]
 
             win = tk.Toplevel(self.root)
-            win.title("FAQ")
+            win.title("FAQ — Continuity Bridge")
             win.configure(bg=BG)
-            win.resizable(True, True)
-            win.geometry("580x600")
-            win.minsize(480, 400)
+            win.resizable(False, True)
+            win.geometry("560x620")
+            win.minsize(480, 300)
 
-            # ── Scrollable frame ──────────────────────────────────────────────
+            # ── Scrollable via Text widget trick ──────────────────────────────
             outer = tk.Frame(win, bg=BG)
             outer.pack(fill="both", expand=True)
 
@@ -1925,75 +1925,69 @@ class App:
             vsb.config(command=cv.yview)
 
             inner = tk.Frame(cv, bg=BG)
-            cw = cv.create_window((0, 0), window=inner, anchor="nw")
+            _cw = cv.create_window((4, 4), window=inner, anchor="nw")
 
-            def _sync_width(e):
-                cv.itemconfig(cw, width=e.width)
-            cv.bind("<Configure>", _sync_width)
-
-            def _sync_scroll(e):
+            def _frame_changed(e=None):
                 cv.configure(scrollregion=cv.bbox("all"))
-            inner.bind("<Configure>", _sync_scroll)
+                cv.itemconfig(_cw, width=cv.winfo_width() - 8)
+            inner.bind("<Configure>", _frame_changed)
+            cv.bind("<Configure>", _frame_changed)
 
             def _wheel(e):
                 cv.yview_scroll(int(-1 * (e.delta / 60)), "units")
-            cv.bind_all("<MouseWheel>", _wheel)
-            win.bind("<Destroy>", lambda e: cv.unbind_all("<MouseWheel>"))
+            win.bind_all("<MouseWheel>", _wheel)
+            win.bind("<Destroy>", lambda e: win.unbind_all("<MouseWheel>"))
 
             # ── Header ────────────────────────────────────────────────────────
-            hdr = tk.Frame(inner, bg=BG)
-            hdr.pack(fill="x", padx=24, pady=(22, 16))
-            tk.Label(hdr, text="FAQ", bg=BG, fg=TEXT,
-                     font=("Helvetica Neue", 17, "bold"),
-                     anchor="w").pack(anchor="w")
-            tk.Label(hdr, text="Veelgestelde vragen", bg=BG, fg=MUTED,
-                     font=("Helvetica Neue", 11),
-                     anchor="w").pack(anchor="w", pady=(2, 0))
+            tk.Label(inner, text="FAQ", bg=BG, fg=TEXT,
+                     font=("Helvetica Neue", 16, "bold"),
+                     anchor="w").pack(anchor="w", padx=22, pady=(20, 2))
+            tk.Label(inner, text="Veelgestelde vragen over Continuity Bridge",
+                     bg=BG, fg=MUTED, font=("Helvetica Neue", 10),
+                     anchor="w").pack(anchor="w", padx=22, pady=(0, 14))
 
             # ── Accordion items ───────────────────────────────────────────────
-            sep_color = BORDER
-
-            for idx, (q, a) in enumerate(FAQ):
+            for q, a in FAQ:
                 card = tk.Frame(inner, bg=SURFACE2,
-                                highlightbackground=sep_color,
-                                highlightthickness=1)
-                card.pack(fill="x", padx=16, pady=(0, 6))
+                                highlightbackground=BORDER, highlightthickness=1)
+                card.pack(fill="x", padx=14, pady=(0, 5))
 
-                open_var = tk.BooleanVar(value=False)
-                plus_lbl  = tk.StringVar(value="+")
+                plus_var = tk.StringVar(value="+")
+                open_var = [False]
 
-                ans_frame = tk.Frame(card, bg=SURFACE2)
-                tk.Label(ans_frame, text=a, bg=SURFACE2, fg=MUTED,
+                # Answer (hidden initially)
+                ans = tk.Frame(card, bg=SURFACE2)
+                tk.Label(ans, text=a, bg=SURFACE2, fg=MUTED,
                          font=("Helvetica Neue", 11),
-                         wraplength=500, justify="left",
-                         anchor="nw").pack(
-                    fill="x", padx=18, pady=(0, 16))
+                         wraplength=490, justify="left",
+                         anchor="nw").pack(fill="x", padx=16, pady=(0, 14))
 
-                def _toggle(ov=open_var, af=ans_frame, pl=plus_lbl):
-                    new = not ov.get()
-                    ov.set(new)
-                    pl.set("×" if new else "+")
-                    if new:
-                        af.pack(fill="x")
+                def _toggle(ov=open_var, af=ans, pv=plus_var):
+                    ov[0] = not ov[0]
+                    pv.set("×" if ov[0] else "+")
+                    if ov[0]:
+                        af.pack(fill="x", after=af.master.winfo_children()[0])
                     else:
                         af.pack_forget()
+                    inner.update_idletasks()
+                    cv.configure(scrollregion=cv.bbox("all"))
 
+                # Question row
                 row = tk.Frame(card, bg=SURFACE2, cursor="hand2")
                 row.pack(fill="x")
                 tk.Label(row, text=q, bg=SURFACE2, fg=TEXT,
-                         font=("Helvetica Neue", 12, "bold"),
-                         wraplength=460, justify="left",
-                         anchor="w").pack(
-                    side="left", padx=18, pady=14, fill="x", expand=True)
-                tk.Label(row, textvariable=plus_lbl,
+                         font=("Helvetica Neue", 11, "bold"),
+                         wraplength=450, justify="left", anchor="w").pack(
+                    side="left", padx=16, pady=12, fill="x", expand=True)
+                tk.Label(row, textvariable=plus_var,
                          bg=SURFACE2, fg=ACCENT2,
-                         font=("Helvetica Neue", 16)).pack(
-                    side="right", padx=16)
+                         font=("Helvetica Neue", 14)).pack(side="right", padx=14)
 
-                for w in [row] + row.winfo_children():
+                for w in [row] + list(row.winfo_children()):
                     w.bind("<Button-1>", lambda e, t=_toggle: t())
 
-            tk.Frame(inner, bg=BG, height=16).pack()
+            tk.Frame(inner, bg=BG, height=14).pack()
+            win.after(50, _frame_changed)
 
         # ── About-venster ────────────────────────────────────────────────────
         def _show_about():
