@@ -2482,6 +2482,10 @@ class App:
             _appmenu.add_separator()
             _appmenu.add_command(label='Voorkeuren…', command=self._show_prefs,
                                  accelerator='Command+,')
+            _appmenu.add_separator()
+            _appmenu.add_command(label='Beëindig Continuity Bridge',
+                                 command=self.root.quit,
+                                 accelerator='Command+Q')
             _menubar.add_cascade(label='Continuity Bridge', menu=_appmenu)
 
             # Help-menu
