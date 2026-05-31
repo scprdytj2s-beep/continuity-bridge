@@ -853,6 +853,83 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# macOS 26+ COMPATIBILITY PATCH
+# NSMenuItem initWithTitle:action:keyEquivalent: now rejects empty string titles.
+# Tk creates menu items with empty titles during init → crash.
+# Swizzle the method to replace empty titles with a space before tk.Tk() is called.
+# ---------------------------------------------------------------------------
+def _patch_nsmenuitem_for_macos26():
+    import sys, platform as _plat
+    if sys.platform != 'darwin':
+        return
+    try:
+        ver_str = _plat.mac_ver()[0]
+        major   = int(ver_str.split('.')[0]) if ver_str else 0
+        if major < 26:
+            return
+    except Exception:
+        return
+    try:
+        import ctypes
+        libobjc = ctypes.CDLL('/usr/lib/libobjc.A.dylib')
+        libobjc.objc_getClass.restype              = ctypes.c_void_p
+        libobjc.objc_getClass.argtypes             = [ctypes.c_char_p]
+        libobjc.sel_registerName.restype           = ctypes.c_void_p
+        libobjc.sel_registerName.argtypes          = [ctypes.c_char_p]
+        libobjc.class_getInstanceMethod.restype    = ctypes.c_void_p
+        libobjc.class_getInstanceMethod.argtypes   = [ctypes.c_void_p, ctypes.c_void_p]
+        libobjc.method_getImplementation.restype   = ctypes.c_void_p
+        libobjc.method_getImplementation.argtypes  = [ctypes.c_void_p]
+        libobjc.method_setImplementation.restype   = ctypes.c_void_p
+        libobjc.method_setImplementation.argtypes  = [ctypes.c_void_p, ctypes.c_void_p]
+
+        cls      = libobjc.objc_getClass(b'NSMenuItem')
+        sel_init = libobjc.sel_registerName(b'initWithTitle:action:keyEquivalent:')
+        method   = libobjc.class_getInstanceMethod(cls, sel_init)
+        orig_imp = libobjc.method_getImplementation(method)
+
+        IMP_TYPE = ctypes.CFUNCTYPE(
+            ctypes.c_void_p,
+            ctypes.c_void_p, ctypes.c_void_p,
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+        )
+        _orig_fn = IMP_TYPE(orig_imp)
+
+        _sa         = ctypes.cast(libobjc.objc_msgSend, ctypes.c_void_p).value
+        _nsstr_cls  = libobjc.objc_getClass(b'NSString')
+        _sel_swu    = libobjc.sel_registerName(b'stringWithUTF8String:')
+        _sel_len    = libobjc.sel_registerName(b'length')
+
+        def _len(obj):
+            return ctypes.CFUNCTYPE(
+                ctypes.c_uint64, ctypes.c_void_p, ctypes.c_void_p
+            )(_sa)(obj, _sel_len)
+
+        def _nsstr(s):
+            return ctypes.CFUNCTYPE(
+                ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p
+            )(_sa)(_nsstr_cls, _sel_swu, s)
+
+        _space = _nsstr(b' ')  # persistent NSString
+
+        def _patched(self_, cmd, title, action, key):
+            if title and _len(title) == 0:
+                title = _space
+            return _orig_fn(self_, cmd, title, action, key)
+
+        _new_imp = IMP_TYPE(_patched)
+        # Keep references alive (GC protection)
+        _patch_nsmenuitem_for_macos26._orig = _orig_fn
+        _patch_nsmenuitem_for_macos26._new  = _new_imp
+        _patch_nsmenuitem_for_macos26._sp   = _space
+        libobjc.method_setImplementation(method, ctypes.cast(_new_imp, ctypes.c_void_p))
+    except Exception:
+        pass  # fail silently — worst case: same crash as before
+
+_patch_nsmenuitem_for_macos26()
+
+# ---------------------------------------------------------------------------
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
@@ -1784,8 +1861,10 @@ class App:
                  "Ja, volledig. Na activatie heeft de app geen internetverbinding nodig. "
                  "Verwerking gebeurt lokaal op je Mac of pc."),
                 ("Kan ik de licentie op meerdere Macs gebruiken?",
-                 "Een licentie is gekoppeld aan één machine. Heb je een nieuwe Mac? "
-                 "Neem contact op via support@studiomichielboesveldt.nl en we lossen het op."),
+                 "Een licentie is gekoppeld aan één machine. Ga je over naar een nieuwe Mac? "
+                 "Verwijder de licentie eerst op je oude Mac via Help → Verwijder licentie, "
+                 "en activeer daarna op je nieuwe Mac. Ben je dat vergeten of loop je ergens "
+                 "tegenaan? Stuur een mail naar support@studiomichielboesveldt.nl."),
                 ("Wat gebeurt er als mijn licentie verloopt?",
                  "Na een jaar stopt de app met verwerken totdat je verlengt. "
                  "Je bestanden blijven gewoon intact — er verdwijnt niets."),
