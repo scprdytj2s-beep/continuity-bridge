@@ -855,34 +855,55 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # macOS 26+ COMPATIBILITY PATCH
-# NSMenuItem initWithTitle:action:keyEquivalent: now rejects empty string titles.
+# NSMenuItem initWithTitle:action:keyEquivalent: rejects empty string titles.
 # Tk creates menu items with empty titles during init → crash.
-# Swizzle the method to replace empty titles with a space before tk.Tk() is called.
+# Two-layer fix: NSAssertionHandler suppresses the assertion, AND we swizzle
+# the method to replace empty titles with a retained NSString.
 # ---------------------------------------------------------------------------
 def _patch_nsmenuitem_for_macos26():
     import sys, platform as _plat
     if sys.platform != 'darwin':
         return
     try:
-        ver_str = _plat.mac_ver()[0]
-        major   = int(ver_str.split('.')[0]) if ver_str else 0
+        major = int(_plat.mac_ver()[0].split('.')[0])
         if major < 26:
             return
     except Exception:
         return
+
+    # ── Layer 1: NSAssertionHandler — suppress the assertion before it raises ──
+    try:
+        import objc as _objc
+        from Foundation import NSAssertionHandler as _NSAHandler, NSThread as _NSThread
+
+        class _SilentHandler(_NSAHandler):
+            def handleFailureInMethod_object_file_lineNumber_description_(
+                    self, sel, obj, fn, ln, desc):
+                pass  # swallow — we handle it in the swizzle below
+            def handleFailureInFunction_file_lineNumber_description_(
+                    self, fn_name, fn, ln, desc):
+                pass
+
+        _h = _SilentHandler.alloc().init()
+        _NSThread.mainThread().threadDictionary()['NSAssertionHandler'] = _h
+        _patch_nsmenuitem_for_macos26._handler = _h
+    except Exception:
+        pass
+
+    # ── Layer 2: method swizzle — replace empty title with retained NSString ──
     try:
         import ctypes
         libobjc = ctypes.CDLL('/usr/lib/libobjc.A.dylib')
-        libobjc.objc_getClass.restype              = ctypes.c_void_p
-        libobjc.objc_getClass.argtypes             = [ctypes.c_char_p]
-        libobjc.sel_registerName.restype           = ctypes.c_void_p
-        libobjc.sel_registerName.argtypes          = [ctypes.c_char_p]
-        libobjc.class_getInstanceMethod.restype    = ctypes.c_void_p
-        libobjc.class_getInstanceMethod.argtypes   = [ctypes.c_void_p, ctypes.c_void_p]
-        libobjc.method_getImplementation.restype   = ctypes.c_void_p
-        libobjc.method_getImplementation.argtypes  = [ctypes.c_void_p]
-        libobjc.method_setImplementation.restype   = ctypes.c_void_p
-        libobjc.method_setImplementation.argtypes  = [ctypes.c_void_p, ctypes.c_void_p]
+        libobjc.objc_getClass.restype             = ctypes.c_void_p
+        libobjc.objc_getClass.argtypes            = [ctypes.c_char_p]
+        libobjc.sel_registerName.restype          = ctypes.c_void_p
+        libobjc.sel_registerName.argtypes         = [ctypes.c_char_p]
+        libobjc.class_getInstanceMethod.restype   = ctypes.c_void_p
+        libobjc.class_getInstanceMethod.argtypes  = [ctypes.c_void_p, ctypes.c_void_p]
+        libobjc.method_getImplementation.restype  = ctypes.c_void_p
+        libobjc.method_getImplementation.argtypes = [ctypes.c_void_p]
+        libobjc.method_setImplementation.restype  = ctypes.c_void_p
+        libobjc.method_setImplementation.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 
         cls      = libobjc.objc_getClass(b'NSMenuItem')
         sel_init = libobjc.sel_registerName(b'initWithTitle:action:keyEquivalent:')
@@ -896,36 +917,47 @@ def _patch_nsmenuitem_for_macos26():
         )
         _orig_fn = IMP_TYPE(orig_imp)
 
-        _sa         = ctypes.cast(libobjc.objc_msgSend, ctypes.c_void_p).value
+        # Build a RETAINED NSString @" " via [[NSString alloc] initWithUTF8String:]
+        _sa_ptr = ctypes.cast(libobjc.objc_msgSend, ctypes.c_void_p).value
+
         _nsstr_cls  = libobjc.objc_getClass(b'NSString')
-        _sel_swu    = libobjc.sel_registerName(b'stringWithUTF8String:')
-        _sel_len    = libobjc.sel_registerName(b'length')
+        _sel_alloc   = libobjc.sel_registerName(b'alloc')
+        _sel_initUTF = libobjc.sel_registerName(b'initWithUTF8String:')
+        _sel_len     = libobjc.sel_registerName(b'length')
 
-        def _len(obj):
-            return ctypes.CFUNCTYPE(
+        # [NSString alloc] — 2-arg msgSend
+        _fn_alloc = ctypes.CFUNCTYPE(
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p
+        )(_sa_ptr)
+        _alloc_obj = _fn_alloc(_nsstr_cls, _sel_alloc)
+
+        # [alloc_obj initWithUTF8String:" "] — 3-arg msgSend, retain count = 1
+        _fn_init = ctypes.CFUNCTYPE(
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p
+        )(_sa_ptr)
+        _space = _fn_init(_alloc_obj, _sel_initUTF, b' ')
+
+        def _get_len(obj):
+            _fn_len = ctypes.CFUNCTYPE(
                 ctypes.c_uint64, ctypes.c_void_p, ctypes.c_void_p
-            )(_sa)(obj, _sel_len)
-
-        def _nsstr(s):
-            return ctypes.CFUNCTYPE(
-                ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p
-            )(_sa)(_nsstr_cls, _sel_swu, s)
-
-        _space = _nsstr(b' ')  # persistent NSString
+            )(_sa_ptr)
+            return _fn_len(obj, _sel_len)
 
         def _patched(self_, cmd, title, action, key):
-            if title and _len(title) == 0:
+            try:
+                if title and _get_len(title) == 0:
+                    title = _space
+            except Exception:
                 title = _space
             return _orig_fn(self_, cmd, title, action, key)
 
         _new_imp = IMP_TYPE(_patched)
-        # Keep references alive (GC protection)
-        _patch_nsmenuitem_for_macos26._orig = _orig_fn
-        _patch_nsmenuitem_for_macos26._new  = _new_imp
-        _patch_nsmenuitem_for_macos26._sp   = _space
+        _patch_nsmenuitem_for_macos26._orig  = _orig_fn
+        _patch_nsmenuitem_for_macos26._new   = _new_imp
+        _patch_nsmenuitem_for_macos26._space = _space
         libobjc.method_setImplementation(method, ctypes.cast(_new_imp, ctypes.c_void_p))
     except Exception:
-        pass  # fail silently — worst case: same crash as before
+        pass
 
 _patch_nsmenuitem_for_macos26()
 
@@ -1840,113 +1872,128 @@ class App:
         def _show_faq():
             FAQ = [
                 ("Hoe importeer ik het verwerkte ALE terug in Avid?",
-                 "Ga in Avid naar Preferences → User → Import → Shot Log.\n"
-                 "Kies onder Events de optie 'Merge events with known master clips'.\n"
+                 "Ga in Avid naar Preferences → User → Import → Shot Log. "
+                 "Kies onder Events de optie 'Merge events with known master clips'. "
                  "Zo voegt Avid de comments en ratings toe aan je bestaande clips "
                  "in plaats van nieuwe clips aan te maken."),
                 ("Welke PDF-formaten worden ondersteund?",
                  "Continuity Bridge ondersteunt de meeste gangbare continuïteitsrapporten. "
                  "Werkt jouw rapport niet goed? Stuur het op via "
-                 "support@studiomichielboesveldt.nl en we kijken ernaar."),
+                 "support@studiomichielboesveldt.nl — we kijken ernaar."),
                 ("Verdwijnt mijn info na het maken van een multiclip?",
                  "Dat kan. Importeer de ALE altijd vóórdat je multiclips aanmaakt. "
                  "Avid draagt metadata niet automatisch over aan bestaande multiclips."),
-                ("Ik krijg een waarschuwing dat de app van een onbekende ontwikkelaar is — wat nu?",
-                 "Dit is een standaard macOS-beveiliging voor apps die niet via de App Store "
-                 "zijn gedownload. Je kunt dit veilig negeren: ga naar "
-                 "Systeeminstellingen → Privacy en beveiliging en klik op 'Toch openen'.\n"
-                 "We werken aan een Apple Developer-registratie zodat deze waarschuwing "
-                 "in de toekomst niet meer verschijnt."),
+                ("Ik krijg een waarschuwing dat de app van een onbekende ontwikkelaar is.",
+                 "Dit is een standaard macOS-beveiliging voor apps buiten de App Store. "
+                 "Je kunt dit veilig negeren: ga naar Systeeminstellingen → Privacy en "
+                 "beveiliging → klik op 'Toch openen'. "
+                 "We werken aan een Apple Developer-registratie zodat deze melding verdwijnt."),
                 ("Werkt Continuity Bridge offline?",
                  "Ja, volledig. Na activatie heeft de app geen internetverbinding nodig. "
                  "Verwerking gebeurt lokaal op je Mac of pc."),
                 ("Kan ik de licentie op meerdere Macs gebruiken?",
                  "Een licentie is gekoppeld aan één machine. Ga je over naar een nieuwe Mac? "
-                 "Verwijder de licentie eerst op je oude Mac via Help → Verwijder licentie, "
-                 "en activeer daarna op je nieuwe Mac. Ben je dat vergeten of loop je ergens "
-                 "tegenaan? Stuur een mail naar support@studiomichielboesveldt.nl."),
+                 "Verwijder de licentie eerst via Help → Verwijder licentie, en activeer "
+                 "daarna op je nieuwe Mac. Ben je dat vergeten? "
+                 "Mail naar support@studiomichielboesveldt.nl."),
                 ("Wat gebeurt er als mijn licentie verloopt?",
                  "Na een jaar stopt de app met verwerken totdat je verlengt. "
                  "Je bestanden blijven gewoon intact — er verdwijnt niets."),
                 ("Mijn clips worden niet herkend — wat nu?",
                  "Controleer of de clipnamen in je ALE overeenkomen met de namen in het "
-                 "continuïteitsrapport. Kleine afwijkingen in naamgeving kunnen zorgen voor "
-                 "een mismatch. Neem anders contact op via support@studiomichielboesveldt.nl."),
+                 "continuïteitsrapport. Kleine afwijkingen kunnen een mismatch geven. "
+                 "Neem contact op via support@studiomichielboesveldt.nl."),
             ]
 
             win = tk.Toplevel(self.root)
-            win.title("FAQ — Continuity Bridge")
+            win.title("FAQ")
             win.configure(bg=BG)
-            win.resizable(False, True)
-            win.geometry("560x520")
+            win.resizable(True, True)
+            win.geometry("580x600")
+            win.minsize(480, 400)
 
-            # Scrollable container
-            canvas = tk.Canvas(win, bg=BG, bd=0, highlightthickness=0)
-            scrollbar = tk.Scrollbar(win, orient="vertical", command=canvas.yview)
-            canvas.configure(yscrollcommand=scrollbar.set)
-            scrollbar.pack(side="right", fill="y")
-            canvas.pack(side="left", fill="both", expand=True)
+            # ── Scrollable frame ──────────────────────────────────────────────
+            outer = tk.Frame(win, bg=BG)
+            outer.pack(fill="both", expand=True)
 
-            frame = tk.Frame(canvas, bg=BG)
-            canvas_window = canvas.create_window((0, 0), window=frame, anchor="nw")
+            vsb = tk.Scrollbar(outer, orient="vertical")
+            vsb.pack(side="right", fill="y")
 
-            def _on_resize(e):
-                canvas.itemconfig(canvas_window, width=e.width)
-            canvas.bind("<Configure>", _on_resize)
+            cv = tk.Canvas(outer, bg=BG, bd=0, highlightthickness=0,
+                           yscrollcommand=vsb.set)
+            cv.pack(side="left", fill="both", expand=True)
+            vsb.config(command=cv.yview)
 
-            def _on_frame_configure(e):
-                canvas.configure(scrollregion=canvas.bbox("all"))
-            frame.bind("<Configure>", _on_frame_configure)
+            inner = tk.Frame(cv, bg=BG)
+            cw = cv.create_window((0, 0), window=inner, anchor="nw")
 
-            # Mousewheel
-            def _on_scroll(e):
-                canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
-            canvas.bind_all("<MouseWheel>", _on_scroll)
-            win.bind("<Destroy>", lambda e: canvas.unbind_all("<MouseWheel>"))
+            def _sync_width(e):
+                cv.itemconfig(cw, width=e.width)
+            cv.bind("<Configure>", _sync_width)
 
-            tk.Label(frame, text="FAQ", bg=BG, fg=TEXT,
-                     font=("Helvetica Neue", 16, "bold")).pack(
-                anchor="w", padx=28, pady=(24, 4))
-            tk.Label(frame, text="Veelgestelde vragen over Continuity Bridge",
-                     bg=BG, fg=MUTED, font=("Helvetica Neue", 11)).pack(
-                anchor="w", padx=28, pady=(0, 20))
+            def _sync_scroll(e):
+                cv.configure(scrollregion=cv.bbox("all"))
+            inner.bind("<Configure>", _sync_scroll)
 
-            for q, a in FAQ:
-                item = tk.Frame(frame, bg=SURFACE2,
-                                highlightbackground=BORDER, highlightthickness=1)
-                item.pack(fill="x", padx=20, pady=4)
+            def _wheel(e):
+                cv.yview_scroll(int(-1 * (e.delta / 60)), "units")
+            cv.bind_all("<MouseWheel>", _wheel)
+            win.bind("<Destroy>", lambda e: cv.unbind_all("<MouseWheel>"))
 
-                # Question row (clickable)
-                q_var = tk.BooleanVar(value=False)
-                a_frame = tk.Frame(item, bg=SURFACE2)
+            # ── Header ────────────────────────────────────────────────────────
+            hdr = tk.Frame(inner, bg=BG)
+            hdr.pack(fill="x", padx=24, pady=(22, 16))
+            tk.Label(hdr, text="FAQ", bg=BG, fg=TEXT,
+                     font=("Helvetica Neue", 17, "bold"),
+                     anchor="w").pack(anchor="w")
+            tk.Label(hdr, text="Veelgestelde vragen", bg=BG, fg=MUTED,
+                     font=("Helvetica Neue", 11),
+                     anchor="w").pack(anchor="w", pady=(2, 0))
 
-                def _toggle(af=a_frame, qv=q_var, it=item):
-                    qv.set(not qv.get())
-                    if qv.get():
-                        af.pack(fill="x", padx=16, pady=(0, 14))
+            # ── Accordion items ───────────────────────────────────────────────
+            sep_color = BORDER
+
+            for idx, (q, a) in enumerate(FAQ):
+                card = tk.Frame(inner, bg=SURFACE2,
+                                highlightbackground=sep_color,
+                                highlightthickness=1)
+                card.pack(fill="x", padx=16, pady=(0, 6))
+
+                open_var = tk.BooleanVar(value=False)
+                plus_lbl  = tk.StringVar(value="+")
+
+                ans_frame = tk.Frame(card, bg=SURFACE2)
+                tk.Label(ans_frame, text=a, bg=SURFACE2, fg=MUTED,
+                         font=("Helvetica Neue", 11),
+                         wraplength=500, justify="left",
+                         anchor="nw").pack(
+                    fill="x", padx=18, pady=(0, 16))
+
+                def _toggle(ov=open_var, af=ans_frame, pl=plus_lbl):
+                    new = not ov.get()
+                    ov.set(new)
+                    pl.set("×" if new else "+")
+                    if new:
+                        af.pack(fill="x")
                     else:
                         af.pack_forget()
 
-                q_btn = tk.Frame(item, bg=SURFACE2, cursor="arrow")
-                q_btn.pack(fill="x")
-                tk.Label(q_btn, text=q, bg=SURFACE2, fg=TEXT,
+                row = tk.Frame(card, bg=SURFACE2, cursor="hand2")
+                row.pack(fill="x")
+                tk.Label(row, text=q, bg=SURFACE2, fg=TEXT,
                          font=("Helvetica Neue", 12, "bold"),
                          wraplength=460, justify="left",
-                         anchor="w").pack(side="left", padx=16, pady=14,
-                                          fill="x", expand=True)
-                tk.Label(q_btn, text="+", bg=SURFACE2, fg=ACCENT2,
-                         font=("Helvetica Neue", 14)).pack(side="right", padx=16)
-                q_btn.bind("<Button-1>", lambda e, t=_toggle: t())
-                for child in q_btn.winfo_children():
-                    child.bind("<Button-1>", lambda e, t=_toggle: t())
+                         anchor="w").pack(
+                    side="left", padx=18, pady=14, fill="x", expand=True)
+                tk.Label(row, textvariable=plus_lbl,
+                         bg=SURFACE2, fg=ACCENT2,
+                         font=("Helvetica Neue", 16)).pack(
+                    side="right", padx=16)
 
-                # Answer
-                tk.Label(a_frame, text=a, bg=SURFACE2, fg=MUTED,
-                         font=("Helvetica Neue", 11),
-                         wraplength=480, justify="left",
-                         anchor="nw").pack(fill="x")
+                for w in [row] + row.winfo_children():
+                    w.bind("<Button-1>", lambda e, t=_toggle: t())
 
-            tk.Frame(frame, bg=BG, height=20).pack()
+            tk.Frame(inner, bg=BG, height=16).pack()
 
         # ── About-venster ────────────────────────────────────────────────────
         def _show_about():
