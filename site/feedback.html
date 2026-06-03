@@ -172,7 +172,7 @@
 
     .type-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 10px;
     }
 
@@ -357,7 +357,6 @@
           <label>Type</label>
           <div class="type-grid">
             <button type="button" class="type-btn active" data-value="Bug">🐛 Bug</button>
-            <button type="button" class="type-btn" data-value="Layout">📐 Layout</button>
             <button type="button" class="type-btn" data-value="Verzoek">💡 Verzoek</button>
           </div>
           <input type="hidden" id="issueType" value="Bug" />
@@ -365,7 +364,7 @@
 
         <div class="field">
           <label>Naam</label>
-          <input type="text" id="name" placeholder="Bijv. Wouter" autocomplete="given-name" />
+          <input type="text" id="name" placeholder="Jouw naam" autocomplete="given-name" />
         </div>
 
         <div class="field">
@@ -384,8 +383,8 @@
         </div>
 
         <div class="field">
-          <label>Stappen om te reproduceren <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">(optioneel)</span></label>
-          <textarea id="steps" placeholder="1. Open de app&#10;2. Sleep een PDF in…&#10;3. …" style="min-height:80px"></textarea>
+          <label>Wat deed je op het moment dat het misging? <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">(optioneel)</span></label>
+          <textarea id="steps" placeholder="Bijv: ik had een PDF ingeladen, klikte op Verwerken, en toen…" style="min-height:80px"></textarea>
         </div>
 
         <button type="submit" class="btn-submit" id="submitBtn">Versturen</button>
