@@ -2,7 +2,7 @@ const OWNER  = 'scprdytj2s-beep';
 const REPO   = 'continuity-bridge';
 const TOKEN  = process.env.GITHUB_TOKEN;
 const RESEND = process.env.RESEND_API_KEY;
-const FROM   = 'Continuity Bridge <noreply@studiomichielboesveldt.nl>';
+const FROM   = 'Continuity Bridge <support@studiomichielboesveldt.nl>';
 
 const LABEL_MAP = { Bug: 'bug', Verzoek: 'enhancement' };
 
