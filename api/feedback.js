@@ -1,6 +1,6 @@
 const OWNER = 'scprdytj2s-beep';
 const REPO  = 'continuity-bridge';
-const TOKEN = process.env.GITHUB_FEEDBACK_TOKEN;
+const TOKEN = process.env.GITHUB_TOKEN;
 
 const LABEL_MAP = {
   Bug:     'bug',
