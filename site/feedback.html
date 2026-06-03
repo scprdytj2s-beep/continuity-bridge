@@ -325,6 +325,56 @@
       padding: 20px;
     }
 
+    /* ── Upload ── */
+    .upload-area {
+      border: 1px dashed var(--border2);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      overflow: hidden;
+    }
+
+    .upload-area:hover { border-color: var(--accent); }
+
+    .upload-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 24px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .upload-preview {
+      position: relative;
+    }
+
+    .upload-preview img {
+      width: 100%;
+      max-height: 200px;
+      object-fit: contain;
+      background: var(--surface2);
+      display: block;
+    }
+
+    .remove-img {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
     @media (max-width: 600px) {
       nav { padding: 0 20px; }
       .page { padding: 48px 16px 80px; }
@@ -378,6 +428,21 @@
         </div>
 
         <div class="field">
+          <label>Platform</label>
+          <div class="type-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <button type="button" class="type-btn active" data-platform="Mac (Apple Silicon)">🍎 Mac Silicon</button>
+            <button type="button" class="type-btn" data-platform="Mac (Intel)">💻 Mac Intel</button>
+            <button type="button" class="type-btn" data-platform="Windows">🪟 Windows</button>
+          </div>
+          <input type="hidden" id="platform" value="Mac (Apple Silicon)" />
+        </div>
+
+        <div class="field">
+          <label>macOS / Windows versie <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">(optioneel)</span></label>
+          <input type="text" id="osVersion" placeholder="Bijv. macOS 15.4 of Windows 11" />
+        </div>
+
+        <div class="field">
           <label>Beschrijving <span style="color:var(--accent)">*</span></label>
           <textarea id="description" placeholder="Beschrijf zo concreet mogelijk wat er mis gaat of wat je zou willen zien…" required></textarea>
         </div>
@@ -385,6 +450,22 @@
         <div class="field">
           <label>Wat deed je op het moment dat het misging? <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">(optioneel)</span></label>
           <textarea id="steps" placeholder="Bijv: ik had een PDF ingeladen, klikte op Verwerken, en toen…" style="min-height:80px"></textarea>
+        </div>
+
+        <div class="field">
+          <label>Screenshot <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">(optioneel)</span></label>
+          <div class="upload-area" id="uploadArea">
+            <input type="file" id="screenshot" accept="image/*" style="display:none" />
+            <div class="upload-placeholder" id="uploadPlaceholder">
+              <span style="font-size:24px">📎</span>
+              <span>Klik om een screenshot toe te voegen</span>
+              <span style="font-size:12px;color:var(--dim)">PNG, JPG — max 5 MB</span>
+            </div>
+            <div class="upload-preview" id="uploadPreview" style="display:none">
+              <img id="previewImg" src="" alt="preview" />
+              <button type="button" class="remove-img" id="removeImg">✕</button>
+            </div>
+          </div>
         </div>
 
         <button type="submit" class="btn-submit" id="submitBtn">Versturen</button>
@@ -409,7 +490,7 @@
 
   <script>
     // Type buttons
-    const typeBtns = document.querySelectorAll('.type-btn');
+    const typeBtns = document.querySelectorAll('[data-value]');
     typeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         typeBtns.forEach(b => b.classList.remove('active'));
@@ -417,6 +498,48 @@
         document.getElementById('issueType').value = btn.dataset.value;
       });
     });
+
+    // Platform buttons
+    const platformBtns = document.querySelectorAll('[data-platform]');
+    platformBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        platformBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('platform').value = btn.dataset.platform;
+      });
+    });
+
+    // Screenshot upload
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput  = document.getElementById('screenshot');
+    uploadArea.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => showPreview(fileInput.files[0]));
+    document.getElementById('removeImg').addEventListener('click', (e) => {
+      e.stopPropagation();
+      fileInput.value = '';
+      document.getElementById('uploadPreview').style.display = 'none';
+      document.getElementById('uploadPlaceholder').style.display = 'flex';
+    });
+
+    function showPreview(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        document.getElementById('previewImg').src = e.target.result;
+        document.getElementById('uploadPreview').style.display = 'block';
+        document.getElementById('uploadPlaceholder').style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
 
     // Submit
     document.getElementById('feedbackForm').addEventListener('submit', async (e) => {
@@ -428,12 +551,31 @@
       btn.disabled = true;
       btn.textContent = 'Versturen…';
 
+      const screenshotFile = fileInput.files[0];
+      let screenshotB64 = null;
+      let screenshotName = null;
+      if (screenshotFile) {
+        if (screenshotFile.size > 5 * 1024 * 1024) {
+          document.getElementById('stateError').textContent = '❌ Screenshot is te groot (max 5 MB).';
+          document.getElementById('stateError').style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Versturen';
+          return;
+        }
+        screenshotB64  = await fileToBase64(screenshotFile);
+        screenshotName = screenshotFile.name;
+      }
+
       const payload = {
-        type:        document.getElementById('issueType').value,
-        name:        document.getElementById('name').value.trim() || 'Anoniem',
-        version:     document.getElementById('version').value,
-        description: desc,
-        steps:       document.getElementById('steps').value.trim(),
+        type:          document.getElementById('issueType').value,
+        name:          document.getElementById('name').value.trim() || 'Anoniem',
+        version:       document.getElementById('version').value,
+        platform:      document.getElementById('platform').value,
+        osVersion:     document.getElementById('osVersion').value.trim(),
+        description:   desc,
+        steps:         document.getElementById('steps').value.trim(),
+        screenshotB64,
+        screenshotName,
       };
 
       try {

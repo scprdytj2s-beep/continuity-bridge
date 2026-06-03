@@ -4,7 +4,6 @@ const TOKEN = process.env.GITHUB_TOKEN;
 
 const LABEL_MAP = {
   Bug:     'bug',
-  Layout:  'layout',
   Verzoek: 'enhancement',
 };
 
@@ -31,20 +30,50 @@ export default async function handler(req, res) {
 
   // POST — create issue
   if (req.method === 'POST') {
-    const { type, name, version, description, steps } = req.body;
+    const { type, name, version, platform, osVersion, description, steps, screenshotB64, screenshotName } = req.body;
     if (!description) return res.status(400).json({ error: 'description required' });
 
-    const label  = LABEL_MAP[type] || 'bug';
-    const title  = `[${type}] ${description.slice(0, 80)}${description.length > 80 ? '…' : ''}`;
-    const body   = [
+    // Upload screenshot to repo if provided
+    let screenshotUrl = null;
+    if (screenshotB64 && screenshotName) {
+      const ts   = Date.now();
+      const ext  = screenshotName.split('.').pop() || 'png';
+      const path = `feedback-screenshots/${ts}.${ext}`;
+      const up   = await fetch(
+        `https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `token ${TOKEN}`,
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: `feedback screenshot ${ts}`,
+            content: screenshotB64,
+          }),
+        }
+      );
+      if (up.ok) {
+        const upData = await up.json();
+        screenshotUrl = upData.content?.download_url;
+      }
+    }
+
+    const label = LABEL_MAP[type] || 'bug';
+    const title = `[${type}] ${description.slice(0, 80)}${description.length > 80 ? '…' : ''}`;
+    const body  = [
       `**Naam:** ${name || 'Anoniem'}`,
       `**Versie:** ${version || 'onbekend'}`,
+      `**Platform:** ${platform || 'onbekend'}`,
+      osVersion ? `**OS versie:** ${osVersion}` : '',
       `**Type:** ${type}`,
       '',
       '### Beschrijving',
       description,
-      steps ? `\n### Stappen\n${steps}` : '',
-    ].join('\n');
+      steps ? `\n### Wat deed je op het moment dat het misging?\n${steps}` : '',
+      screenshotUrl ? `\n### Screenshot\n![screenshot](${screenshotUrl})` : '',
+    ].filter(Boolean).join('\n');
 
     const r = await fetch(
       `https://api.github.com/repos/${OWNER}/${REPO}/issues`,
@@ -69,7 +98,6 @@ export default async function handler(req, res) {
 
 function labelType(labels) {
   const names = labels.map(l => l.name);
-  if (names.includes('layout'))      return 'Layout';
   if (names.includes('enhancement')) return 'Verzoek';
   return 'Bug';
 }
