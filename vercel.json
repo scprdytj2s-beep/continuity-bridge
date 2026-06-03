@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "public": true,
+  "rewrites": [
+    { "source": "/cbapp/feedback", "destination": "/site/feedback.html" },
+    { "source": "/cbapp/feedback.html", "destination": "/site/feedback.html" },
+    { "source": "/cbapp/download", "destination": "/site/download.html" },
+    { "source": "/cbapp/download.html", "destination": "/site/download.html" },
+    { "source": "/cbapp/success.html", "destination": "/site/success.html" },
+    { "source": "/cbapp/:file", "destination": "/site/:file" },
+    { "source": "/cbapp", "destination": "/site/index.html" }
+  ]
+}

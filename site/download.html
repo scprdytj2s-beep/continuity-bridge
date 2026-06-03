@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <base href="/cbapp/" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Continuity Bridge — Download</title>
+  <link rel="icon" href="logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,700;0,9..144,900;1,9..144,300;1,9..144,700&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg:      #0C0618;
+      --surface: #130825;
+      --border:  #2C1A58;
+      --text:    #EDE8FF;
+      --muted:   #8070B8;
+      --dim:     #4A3280;
+      --accent:  #9B40FF;
+      --accent2: #C084FC;
+      --success: #4ED98A;
+      --gold:    #D4A853;
+      --display: 'Fraunces', serif;
+      --body:    'Figtree', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      overflow: hidden;
+    }
+
+    /* ── Ambient layers ── */
+    .ambient {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .ambient::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 70% 60% at 50% 30%, rgba(155,64,255,0.13) 0%, transparent 65%),
+        radial-gradient(ellipse 40% 40% at 10% 80%,  rgba(123,40,223,0.07) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 30% at 90% 10%,  rgba(192,132,252,0.06) 0%, transparent 50%);
+      animation: ambientBreath 10s ease-in-out infinite alternate;
+    }
+
+    @keyframes ambientBreath {
+      0%   { opacity: 0.6; }
+      100% { opacity: 1; }
+    }
+
+    /* Noise grain overlay */
+    .ambient::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      opacity: 0.35;
+    }
+
+    /* ── Layout ── */
+    .stage {
+      position: relative;
+      z-index: 1;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      padding: 40px 24px;
+    }
+
+    /* ── Logo ── */
+    .logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      text-decoration: none;
+      margin-bottom: 64px;
+      opacity: 0;
+      animation: fadeIn 0.6s ease 0.1s forwards;
+    }
+
+    .logo-wrap img {
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+    }
+
+    .logo-text {
+      font-family: var(--body);
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--muted);
+      letter-spacing: 0.01em;
+    }
+
+    /* ── Orb ── */
+    .orb-wrap {
+      position: relative;
+      width: 140px;
+      height: 140px;
+      margin-bottom: 52px;
+      flex-shrink: 0;
+    }
+
+    /* Glow behind orb */
+    .orb-glow {
+      position: absolute;
+      inset: -30px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(155,64,255,0.25) 0%, transparent 70%);
+      transition: background 1s ease;
+      animation: glowPulse 3s ease-in-out infinite alternate;
+    }
+
+    @keyframes glowPulse {
+      0%   { transform: scale(0.9); opacity: 0.6; }
+      100% { transform: scale(1.1); opacity: 1; }
+    }
+
+    /* Spinning ring — loading state */
+    .orb-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: conic-gradient(
+        var(--accent) 0deg,
+        var(--accent2) 60deg,
+        transparent 120deg,
+        transparent 360deg
+      );
+      animation: spin 2s linear infinite;
+      transition: opacity 0.4s ease;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Inner circle */
+    .orb-inner {
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      transition: background 0.6s ease;
+    }
+
+    /* Solid ring for resolved states */
+    .orb-solid {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      opacity: 0;
+      transition: opacity 0.6s ease, border-color 0.6s ease;
+    }
+
+    /* ── State: loading ── */
+    body.s-loading .orb-ring  { opacity: 1; }
+    body.s-loading .orb-solid { opacity: 0; }
+
+    /* ── State: found ── */
+    body.s-found .orb-ring          { opacity: 0; }
+    body.s-found .orb-solid         { opacity: 1; border-color: var(--success); }
+    body.s-found .orb-glow          { background: radial-gradient(circle, rgba(78,217,138,0.3) 0%, transparent 70%); animation: none; transform: scale(1); opacity: 1; }
+    body.s-found .orb-inner         { background: rgba(78,217,138,0.06); }
+
+    /* ── State: unavailable ── */
+    body.s-unavailable .orb-ring    { opacity: 0; }
+    body.s-unavailable .orb-solid   { opacity: 1; border-color: var(--gold); }
+    body.s-unavailable .orb-glow    { background: radial-gradient(circle, rgba(212,168,83,0.2) 0%, transparent 70%); animation: none; transform: scale(1); opacity: 1; }
+    body.s-unavailable .orb-inner   { background: rgba(212,168,83,0.05); }
+
+    /* ── Content area ── */
+    .content {
+      text-align: center;
+      max-width: 420px;
+      opacity: 0;
+      transform: translateY(12px);
+      animation: fadeUp 0.5s ease 0.3s forwards;
+    }
+
+    @keyframes fadeUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .state-block {
+      display: none;
+    }
+
+    .state-block.active {
+      display: block;
+      animation: fadeUp 0.4s ease forwards;
+    }
+
+    /* Loading */
+    .loading-text {
+      font-family: var(--display);
+      font-size: clamp(22px, 3vw, 28px);
+      font-weight: 300;
+      font-style: italic;
+      letter-spacing: -0.02em;
+      color: var(--muted);
+    }
+
+    /* Found */
+    .found-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--success);
+      margin-bottom: 12px;
+    }
+
+    .found-title {
+      font-family: var(--display);
+      font-size: clamp(24px, 3vw, 30px);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      margin-bottom: 10px;
+      line-height: 1.1;
+    }
+
+    .found-sub {
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 28px;
+      line-height: 1.6;
+    }
+
+    .countdown-ring-wrap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      width: 48px;
+      height: 48px;
+      margin-bottom: 16px;
+    }
+
+    .countdown-svg {
+      position: absolute;
+      inset: 0;
+      transform: rotate(-90deg);
+    }
+
+    .countdown-track {
+      fill: none;
+      stroke: rgba(78,217,138,0.15);
+      stroke-width: 2.5;
+    }
+
+    .countdown-arc {
+      fill: none;
+      stroke: var(--success);
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-dasharray: 125.6;
+      stroke-dashoffset: 0;
+      transition: stroke-dashoffset 1s linear;
+    }
+
+    .countdown-num {
+      font-family: var(--display);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--success);
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Unavailable */
+    .unavail-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 12px;
+    }
+
+    .unavail-title {
+      font-family: var(--display);
+      font-size: clamp(28px, 4vw, 38px);
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      margin-bottom: 14px;
+      line-height: 1.05;
+    }
+
+    .unavail-title em {
+      font-style: italic;
+      color: var(--gold);
+    }
+
+    .unavail-sub {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.65;
+      margin-bottom: 36px;
+      max-width: 360px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .btn-silicon {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--body);
+      font-size: 13px;
+      font-weight: 600;
+      color: #062014;
+      background: var(--success);
+      text-decoration: none;
+      border-radius: 6px;
+      padding: 10px 20px;
+      transition: opacity 0.2s;
+    }
+
+    .btn-silicon:hover { opacity: 0.85; }
+
+    .btn-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--body);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      text-decoration: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px 18px;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .btn-back:hover { color: var(--text); border-color: var(--muted); }
+
+    /* ── Platform label above orb ── */
+    .platform-pill {
+      position: absolute;
+      top: -32px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+
+    /* ── Footer ── */
+    .page-footer {
+      position: fixed;
+      bottom: 28px;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: 12px;
+      color: var(--dim);
+      opacity: 0;
+      animation: fadeIn 0.6s ease 0.8s forwards;
+      z-index: 1;
+    }
+
+    .page-footer a {
+      color: var(--dim);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .page-footer a:hover { color: var(--muted); }
+
+    @keyframes fadeIn {
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body class="s-loading">
+
+  <div class="ambient"></div>
+
+  <div class="stage">
+
+    <a class="logo-wrap" href="/cbapp/">
+      <img src="logo.png" alt="Continuity Bridge" />
+      <span class="logo-text">Continuity Bridge</span>
+    </a>
+
+    <div class="orb-wrap">
+      <div class="platform-pill" id="platform-pill"></div>
+      <div class="orb-glow"></div>
+      <div class="orb-ring"></div>
+      <div class="orb-solid"></div>
+      <div class="orb-inner" id="orb-icon">⬇</div>
+    </div>
+
+    <div class="content">
+
+      <!-- Loading -->
+      <div class="state-block active" id="block-loading">
+        <p class="loading-text">Controleren…</p>
+      </div>
+
+      <!-- Found -->
+      <div class="state-block" id="block-found">
+        <p class="found-label">Beschikbaar</p>
+        <h1 class="found-title" id="found-title">Download start zo.</h1>
+        <p class="found-sub" id="found-sub"></p>
+        <div class="countdown-ring-wrap">
+          <svg class="countdown-svg" viewBox="0 0 48 48">
+            <circle class="countdown-track" cx="24" cy="24" r="20"/>
+            <circle class="countdown-arc" id="countdown-arc" cx="24" cy="24" r="20"/>
+          </svg>
+          <span class="countdown-num" id="countdown-num">3</span>
+        </div>
+      </div>
+
+      <!-- Unavailable -->
+      <div class="state-block" id="block-unavail">
+        <p class="unavail-eyebrow">Komt eraan</p>
+        <h1 class="unavail-title" id="unavail-title">Snel<br><em>beschikbaar.</em></h1>
+        <p class="unavail-sub" id="unavail-sub">Deze versie wordt op dit moment klaargezet. Kom straks terug — of download een andere versie.</p>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:16px;">
+          <a class="btn-silicon" id="silicon-alt" href="download.html?platform=silicon" style="display:none;">
+            🍎 Download Apple Silicon
+          </a>
+        </div>
+        <a class="btn-back" href="/cbapp/">← Terug naar Continuity Bridge</a>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="page-footer">
+    <a href="/cbapp/">studiomichielboesveldt.nl/cbapp</a>
+  </div>
+
+  <script>
+    const REPO = 'scprdytj2s-beep/continuity-bridge';
+
+    const ASSETS = {
+      silicon: { name: 'ContinuityBridge-Silicon.dmg', label: 'Apple Silicon' },
+      intel:   { name: 'ContinuityBridge-Intel.dmg',   label: 'Intel Mac' },
+      windows: { name: 'ContinuityBridge.exe',          label: 'Windows' },
+    };
+
+    const params   = new URLSearchParams(window.location.search);
+    const platform = params.get('platform') || 'silicon';
+    const info     = ASSETS[platform] || ASSETS.silicon;
+
+    document.getElementById('platform-pill').textContent = info.label;
+
+    function setIcon(emoji) {
+      document.getElementById('orb-icon').textContent = emoji;
+    }
+
+    function showState(name) {
+      document.querySelectorAll('.state-block').forEach(b => b.classList.remove('active'));
+      document.getElementById('block-' + name).classList.add('active');
+      document.body.className = 's-' + name;
+    }
+
+    function showFound(url) {
+      setIcon('✓');
+      document.getElementById('found-title').textContent = 'Download start zo.';
+      document.getElementById('found-sub').textContent =
+        `${info.label}-versie gevonden. Je download begint automatisch.`;
+      showState('found');
+
+      // Countdown 3 → 0
+      const arc = document.getElementById('countdown-arc');
+      const num = document.getElementById('countdown-num');
+      const circumference = 125.6;
+      let count = 3;
+      num.textContent = count;
+      arc.style.strokeDashoffset = '0';
+
+      const tick = setInterval(() => {
+        count--;
+        num.textContent = Math.max(count, 0);
+        arc.style.strokeDashoffset = String(circumference * (1 - count / 3));
+        if (count <= 0) {
+          clearInterval(tick);
+          window.location.href = url;
+        }
+      }, 1000);
+    }
+
+    function showUnavailable() {
+      setIcon('◌');
+
+      const titles = {
+        intel:   'Snel<br><em>beschikbaar.</em>',
+        silicon: 'Snel<br><em>beschikbaar.</em>',
+        windows: 'Snel<br><em>beschikbaar.</em>',
+      };
+      const subs = {
+        intel:   'De Intel-versie wordt op dit moment klaargezet op onze server. Kom straks terug, of download alvast de Silicon-versie.',
+        silicon: 'De Silicon-versie wordt op dit moment klaargezet op onze server. Probeer het straks opnieuw.',
+        windows: 'De Windows-versie wordt op dit moment klaargezet op onze server. Probeer het straks opnieuw.',
+      };
+
+      document.getElementById('unavail-title').innerHTML = titles[platform] || titles.silicon;
+      document.getElementById('unavail-sub').textContent = subs[platform] || subs.silicon;
+
+      // Intel unavailable → toon Silicon-knop als alternatief
+      if (platform === 'intel') {
+        document.getElementById('silicon-alt').style.display = 'inline-flex';
+      }
+
+      showState('unavail');
+    }
+
+    async function check() {
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${REPO}/releases/latest`,
+          { headers: { 'Accept': 'application/vnd.github+json' } }
+        );
+        if (!res.ok) { showUnavailable(); return; }
+        const data = await res.json();
+        const asset = (data.assets || []).find(a => a.name === info.name);
+        if (asset) {
+          showFound(asset.browser_download_url);
+        } else {
+          showUnavailable();
+        }
+      } catch {
+        showUnavailable();
+      }
+    }
+
+    // Small delay so loading state is visible
+    setTimeout(check, 600);
+  </script>
+</body>
+</html>

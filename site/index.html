@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <base href="/cbapp/" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Continuity Bridge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,700&family=Figtree:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0C0618;
+      --surface:  #130825;
+      --surface2: #1A0E35;
+      --border:   #2C1A58;
+      --border2:  #3D2278;
+      --text:     #EDE8FF;
+      --muted:    #8070B8;
+      --dim:      #4A3280;
+      --accent:   #9B40FF;
+      --accent2:  #C084FC;
+      --violet:   #7B28DF;
+      --success:  #4ED98A;
+      --display:  'Fraunces', serif;
+      --body:     'Figtree', sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      font-weight: 400;
+      overflow-x: hidden;
+    }
+
+    /* ── Ambient background ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 70% -10%, rgba(155,64,255,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 40% at -10% 60%, rgba(123,40,223,0.09) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 30% at 50% 100%, rgba(78,217,138,0.04) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+      animation: ambientShift 12s ease-in-out infinite alternate;
+    }
+
+    @keyframes ambientShift {
+      0%   { opacity: 0.7; }
+      100% { opacity: 1; }
+    }
+
+    /* ── Sticky nav ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(6,10,20,0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding: 0 52px;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      text-decoration: none;
+    }
+
+    .nav-logo img {
+      width: 32px;
+      height: 32px;
+      border-radius: 7px;
+    }
+
+    .nav-logo-text {
+      font-family: var(--body);
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text);
+      letter-spacing: 0.01em;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .nav-price {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .btn-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--accent);
+      color: #fff;
+      font-family: var(--body);
+      font-weight: 600;
+      font-size: 13px;
+      padding: 8px 18px;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .btn-nav:hover { background: var(--accent2); }
+
+    /* ── HERO ── */
+    .hero {
+      position: relative;
+      z-index: 1;
+      padding: 100px 52px 0;
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 480px 1fr;
+      gap: 40px;
+      align-items: flex-start;
+      min-height: 460px;
+    }
+
+    .hero-left {
+      padding-top: 20px;
+      padding-bottom: 20px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent2);
+      margin-bottom: 26px;
+    }
+
+    .hero-tag span {
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: blink 2.5s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    h1 {
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: clamp(40px, 4vw, 60px);
+      line-height: 1.06;
+      letter-spacing: -0.03em;
+      margin-bottom: 22px;
+      color: var(--text);
+    }
+
+    h1 em {
+      font-style: italic;
+      color: var(--accent2);
+    }
+
+    .hero-sub {
+      font-size: 16px;
+      line-height: 1.7;
+      color: var(--muted);
+      margin-bottom: 38px;
+      max-width: 380px;
+      font-weight: 400;
+    }
+
+    .hero-ctas {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 48px;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      font-size: 14px;
+      padding: 12px 22px;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .btn-primary:hover { background: var(--accent2); }
+
+    .btn-outline {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 14px;
+      padding: 12px 18px;
+      border-radius: 6px;
+      text-decoration: none;
+      border: 1px solid var(--border2);
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .btn-outline:hover { color: var(--text); border-color: var(--muted); }
+
+    .hero-stats {
+      display: flex;
+      gap: 32px;
+      padding-top: 28px;
+      border-top: 1px solid var(--border);
+    }
+
+    .hero-stat strong {
+      display: block;
+      font-family: var(--body);
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+
+    .hero-stat span {
+      font-size: 11px;
+      color: var(--dim);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* ── Hero screenshot ── */
+    .hero-right {
+      position: relative;
+      margin-top: -20px;
+      margin-right: -80px; /* breaks out of grid */
+    }
+
+    .screenshot-float {
+      position: relative;
+      animation: float 6s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50%       { transform: translateY(-14px); }
+    }
+
+    .hero-glow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 90%;
+      height: 70%;
+      background: radial-gradient(ellipse at center, rgba(155,64,255,0.22) 0%, transparent 70%);
+      filter: blur(40px);
+      animation: glowPulse 8s ease-in-out infinite alternate;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    @keyframes glowPulse {
+      0%   { opacity: 0.6; transform: translate(-50%, -50%) scale(0.95); }
+      100% { opacity: 1;   transform: translate(-50%, -50%) scale(1.05); }
+    }
+
+    .hero-screenshot {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      display: block;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.07);
+      box-shadow:
+        0 2px 0 rgba(255,255,255,0.04) inset,
+        0 30px 60px rgba(0,0,0,0.5),
+        0 4px 20px rgba(0,0,0,0.3);
+      transition: transform 0.4s ease;
+    }
+
+    .screenshot-float:hover .hero-screenshot {
+      transform: perspective(1000px) rotateY(-3deg) rotateX(1deg);
+    }
+
+    /* Reflection */
+    .hero-reflection {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      display: block;
+      border-radius: 12px;
+      transform: scaleY(-1);
+      opacity: 0.12;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 60%);
+      -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 60%);
+      margin-top: -2px;
+      filter: blur(2px);
+    }
+
+    /* ── Section shared ── */
+    .section-wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 52px;
+    }
+
+    .section-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent2);
+      margin-bottom: 14px;
+    }
+
+    .section-title {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(26px, 3vw, 38px);
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 56px;
+      max-width: 440px;
+    }
+
+    /* ── Steps ── */
+    .steps-section {
+      padding: 0 52px 100px;
+      max-width: 1100px;
+      margin: 0 auto;
+      margin-top: -60px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .step {
+      background: var(--surface);
+      padding: 38px 32px;
+      transition: background 0.2s;
+    }
+
+    .step:hover { background: var(--surface2); }
+
+    .step-num {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      color: var(--dim);
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    .step-icon {
+      font-size: 28px;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .step h3 {
+      font-weight: 600;
+      font-size: 15px;
+      margin-bottom: 9px;
+      color: var(--text);
+    }
+
+    .step p {
+      font-size: 13.5px;
+      line-height: 1.65;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    /* ── Feature blocks ── */
+    .feature-block {
+      padding: 80px 52px;
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 72px;
+      align-items: center;
+      border-top: 1px solid var(--border);
+    }
+
+    .feature-block.reverse { direction: rtl; }
+    .feature-block.reverse > * { direction: ltr; }
+
+    .feature-img-wrap {
+      position: relative;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.06);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+      transition: transform 0.4s ease;
+      aspect-ratio: 4/3;
+    }
+
+    .feature-img-wrap:hover {
+      transform: perspective(1000px) rotateY(2deg) rotateX(-1deg);
+    }
+
+    .feature-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* crop top for feature 1 */
+    .crop-top .feature-img { object-position: center top; }
+
+    /* crop bottom for feature 2 */
+    .crop-bottom .feature-img { object-position: center bottom; }
+
+    .feature-content h2 {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(22px, 2.5vw, 30px);
+      letter-spacing: -0.03em;
+      margin-bottom: 14px;
+      line-height: 1.15;
+    }
+
+    .feature-content p {
+      font-size: 15px;
+      line-height: 1.7;
+      color: var(--muted);
+      margin-bottom: 26px;
+    }
+
+    .feature-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .feature-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .feature-list li::before {
+      content: '→';
+      color: var(--accent2);
+      flex-shrink: 0;
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    /* ── Testimonial ── */
+    .testimonial-section {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 80px 52px;
+      background: linear-gradient(135deg, rgba(155,64,255,0.06) 0%, transparent 60%);
+    }
+
+    .testimonial-inner {
+      max-width: 680px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .testimonial-quote {
+      font-family: var(--display);
+      font-size: clamp(22px, 2.8vw, 32px);
+      font-weight: 700;
+      font-style: italic;
+      line-height: 1.45;
+      color: var(--text);
+      margin-bottom: 24px;
+      letter-spacing: -0.02em;
+    }
+
+    .testimonial-author {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--dim);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* ── Pricing ── */
+    .pricing-section {
+      position: relative;
+      z-index: 1;
+      padding: 100px 52px;
+      max-width: 780px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .pricing-card {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 16px;
+      padding: 52px 48px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pricing-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), var(--violet), transparent);
+    }
+
+    .pricing-card::after {
+      content: '';
+      position: absolute;
+      top: -80px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 400px;
+      height: 200px;
+      background: radial-gradient(ellipse at center, rgba(155,64,255,0.1) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .intro-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(78,217,138,0.1);
+      border: 1px solid rgba(78,217,138,0.2);
+      color: var(--success);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 5px 14px;
+      border-radius: 100px;
+      margin-bottom: 24px;
+    }
+
+    .pricing-name {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 28px;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+    }
+
+    .pricing-desc {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.65;
+      margin-bottom: 36px;
+      max-width: 440px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .price-amount {
+      font-family: var(--display);
+      font-weight: 900;
+      font-size: 68px;
+      letter-spacing: -0.04em;
+      color: var(--text);
+      line-height: 1;
+    }
+
+    .price-period {
+      font-size: 18px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .price-note {
+      font-size: 12px;
+      color: var(--dim);
+      margin: 10px 0 36px;
+      letter-spacing: 0.04em;
+    }
+
+    .pricing-ctas {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 40px;
+    }
+
+    .btn-buy {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      background: var(--success);
+      color: #062014;
+      font-weight: 700;
+      font-size: 15px;
+      padding: 14px 28px;
+      border-radius: 6px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.15s;
+    }
+
+    .btn-buy:hover:not(:disabled) { opacity: 0.88; }
+    .btn-buy:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Checkout form */
+    .checkout-form {
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 4px;
+      width: 100%;
+      max-width: 360px;
+      text-align: left;
+      animation: slideDown 0.22s ease;
+    }
+    .checkout-form.visible { display: flex; }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .checkout-form label {
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+      display: block;
+    }
+    .checkout-form input {
+      width: 100%;
+      box-sizing: border-box;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 11px 14px;
+      font-size: 14px;
+      color: var(--text);
+      font-family: var(--body);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .checkout-form input:focus { border-color: var(--success); }
+    .checkout-error {
+      font-size: 13px;
+      color: #e05555;
+      display: none;
+    }
+    .checkout-error.visible { display: block; }
+
+    .pricing-features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 28px;
+      text-align: left;
+      border-top: 1px solid var(--border);
+      padding-top: 28px;
+    }
+
+    .pricing-feature {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      align-items: center;
+      gap: 9px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .feat-icon {
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .feat-yes { color: var(--success); }
+    .feat-no  { color: var(--dim); }
+
+    /* ── FAQ ── */
+    .faq-section {
+      position: relative;
+      z-index: 1;
+      padding: 100px 0 80px;
+      border-top: 1px solid var(--border);
+    }
+
+    .faq-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .faq-item {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .faq-item:last-child { border-bottom: none; }
+
+    .faq-q {
+      width: 100%;
+      background: var(--surface);
+      border: none;
+      text-align: left;
+      padding: 22px 28px;
+      font-family: var(--body);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      transition: background 0.15s;
+    }
+
+    .faq-q:hover { background: var(--surface2); }
+
+    .faq-q::after {
+      content: '+';
+      font-size: 18px;
+      font-weight: 300;
+      color: var(--accent2);
+      flex-shrink: 0;
+      transition: transform 0.25s ease;
+    }
+
+    .faq-q[aria-expanded="true"] { background: var(--surface2); }
+    .faq-q[aria-expanded="true"]::after { transform: rotate(45deg); }
+
+    .faq-a {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.3s ease;
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--muted);
+      background: var(--surface2);
+      padding: 0 28px;
+    }
+
+    .faq-a.open {
+      max-height: 600px;
+      padding: 4px 28px 22px;
+    }
+
+    .faq-a--split {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    @media (max-width: 600px) {
+      .faq-a--split {
+        flex-direction: column;
+      }
+      .faq-a--split img {
+        width: 100% !important;
+      }
+    }
+
+    .faq-a a { color: var(--accent2); text-decoration: none; }
+    .faq-a a:hover { color: var(--text); }
+
+    @media (max-width: 960px) {
+      .faq-section { padding: 60px 0; }
+      .faq-q { padding: 18px 20px; }
+      .faq-a.open { padding: 4px 20px 18px; }
+    }
+
+    /* ── Beta banner ── */
+    .beta-banner {
+      position: relative;
+      z-index: 90;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      text-align: center;
+      padding: 10px 24px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .beta-pill {
+      display: inline-block;
+      background: var(--border2);
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    .beta-banner a {
+      color: var(--accent2);
+      text-decoration: none;
+    }
+
+    .beta-banner a:hover { color: var(--text); }
+
+    /* ── Beta inline (in pricing card) ── */
+    .beta-inline {
+      border-top: 1px solid var(--border);
+      padding-top: 24px;
+      margin-bottom: 28px;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .beta-inline p {
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--muted);
+    }
+
+    /* ── Beta notice ── */
+    .beta-section {
+      position: relative;
+      z-index: 1;
+      padding: 0 52px 80px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .beta-card {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+      background: rgba(78,217,138,0.04);
+      border: 1px solid rgba(78,217,138,0.18);
+      border-radius: 14px;
+      padding: 28px 32px;
+    }
+
+    .beta-icon {
+      font-size: 28px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .beta-content h3 {
+      font-family: var(--body);
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--success);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .beta-content p {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .beta-content a {
+      font-size: 13px;
+      color: var(--accent2);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .beta-content a:hover { color: var(--text); }
+
+    @media (max-width: 960px) {
+      .beta-section { padding: 0 24px 60px; }
+    }
+
+    /* ── Contact ── */
+    .contact-section {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--border);
+      padding: 90px 52px;
+    }
+
+    .contact-inner {
+      max-width: 620px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .contact-title {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(26px, 3vw, 36px);
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+    }
+
+    .contact-sub {
+      font-size: 15px;
+      color: var(--muted);
+      margin-bottom: 36px;
+    }
+
+    .contact-form {
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .form-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .form-group input,
+    .form-group textarea {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: var(--text);
+      font-family: var(--body);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+      resize: none;
+      width: 100%;
+    }
+
+    .form-group input::placeholder,
+    .form-group textarea::placeholder {
+      color: var(--dim);
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus {
+      border-color: var(--accent);
+    }
+
+    .btn-submit {
+      background: var(--accent);
+      color: #fff;
+      font-family: var(--body);
+      font-weight: 600;
+      font-size: 14px;
+      padding: 13px 28px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s;
+      align-self: flex-start;
+    }
+
+    .btn-submit:hover { background: var(--accent2); }
+
+    @media (max-width: 960px) {
+      .contact-section { padding: 70px 24px; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+
+    /* ── Footer ── */
+    footer {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--border);
+      padding: 28px 52px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    footer p {
+      font-size: 12px;
+      color: var(--dim);
+      letter-spacing: 0.04em;
+    }
+
+    footer a {
+      font-size: 12px;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    footer a:hover { color: var(--text); }
+
+    /* ── Version line ── */
+    .version-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: -30px;
+      margin-bottom: 48px;
+    }
+
+    .version-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--accent2);
+      text-decoration: none;
+      letter-spacing: 0.03em;
+      transition: color 0.15s;
+    }
+
+    .version-badge:hover { color: var(--text); }
+
+    .version-badge svg {
+      opacity: 0.7;
+      flex-shrink: 0;
+    }
+
+    .version-sep {
+      font-size: 10px;
+      color: var(--dim);
+      user-select: none;
+    }
+
+    .version-meta {
+      font-size: 11.5px;
+      color: var(--dim);
+      letter-spacing: 0.02em;
+    }
+
+    .version-link {
+      font-size: 11.5px;
+      color: var(--dim);
+      text-decoration: none;
+      letter-spacing: 0.02em;
+      transition: color 0.15s;
+    }
+
+    .version-link:hover { color: var(--muted); }
+
+    /* ── Fade-up animation ── */
+    .fade-up {
+      opacity: 0;
+      transform: translateY(18px);
+      animation: fadeUp 0.65s ease forwards;
+    }
+
+    .fade-up:nth-child(1) { animation-delay: 0.05s; }
+    .fade-up:nth-child(2) { animation-delay: 0.12s; }
+    .fade-up:nth-child(3) { animation-delay: 0.20s; }
+    .fade-up:nth-child(4) { animation-delay: 0.28s; }
+    .fade-up:nth-child(5) { animation-delay: 0.36s; }
+
+    @keyframes fadeUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 960px) {
+      .hero { grid-template-columns: 1fr; padding: 60px 24px 0; min-height: auto; }
+      .hero-right { margin-right: 0; }
+      .steps-section, .feature-block, footer { padding-left: 24px; padding-right: 24px; }
+      .steps-grid { grid-template-columns: 1fr; }
+      .feature-block { grid-template-columns: 1fr; gap: 36px; }
+      .feature-block.reverse { direction: ltr; }
+      .pricing-section { padding: 80px 24px; }
+      .pricing-features { grid-template-columns: 1fr; }
+      nav { padding: 0 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <a class="nav-logo" href="#">
+      <img src="logo.png" alt="Continuity Bridge" />
+      <span class="nav-logo-text">Continuity Bridge</span>
+    </a>
+    <div class="nav-right">
+      <span class="nav-price">🎉 Introductieprijs: <s style="opacity:0.45;text-decoration-color:var(--muted)">€ 14,99</s> € 4,99 / jaar</span>
+      <a class="btn-nav" href="download.html?platform=silicon">
+        Download
+      </a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-left">
+      <div class="hero-tag fade-up"><span></span> v1.3 Beta</div>
+      <h1 class="fade-up">Van continuïteits&shy;rapport naar je <em>Avid Bin.</em></h1>
+      <p class="hero-sub fade-up">
+        Lees je PDF-continuïteitsrapporten uit en schrijf alle notities en ratings direct naar je Avid bin.
+      </p>
+      <div class="hero-ctas fade-up">
+        <a class="btn-primary" href="download.html?platform=silicon">
+           Download Apple Silicon
+        </a>
+        <a class="btn-outline" href="download.html?platform=intel">
+           Intel Mac
+        </a>
+        <a class="btn-outline" href="download.html?platform=windows">
+          🪟 Windows (10/11)
+        </a>
+      </div>
+      <div class="version-line fade-up">
+        <a class="version-badge" href="https://github.com/scprdytj2s-beep/continuity-bridge/releases/tag/v1.3" target="_blank" rel="noopener">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/><path d="M6 3.5v3l2 1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          v1.3 Beta
+        </a>
+        <span class="version-sep">·</span>
+        <span class="version-meta">27 mei 2026</span>
+        <span class="version-sep">·</span>
+        <a class="version-link" href="https://github.com/scprdytj2s-beep/continuity-bridge/releases/tag/v1.3" target="_blank" rel="noopener">
+          Wat is er nieuw? ↗
+        </a>
+      </div>
+      <div class="hero-stats fade-up">
+        <div class="hero-stat">
+          <strong>macOS 13+</strong>
+          <span>Intel · macOS 14+ Silicon</span>
+        </div>
+        <div class="hero-stat">
+          <strong>Windows 10 / 11</strong>
+          <span>64-bit</span>
+        </div>
+        <div class="hero-stat">
+          <strong>🎉 € 4,99 / jaar</strong>
+          <span>Intro · <s style="opacity:0.5">€ 14,99</s></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-right">
+      <div class="hero-glow"></div>
+      <div class="screenshot-float">
+        <img class="hero-screenshot" src="app-screenshot.png" alt="Continuity Bridge interface" />
+        <img class="hero-reflection" src="app-screenshot.png" alt="" aria-hidden="true" />
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="steps-section">
+    <div class="section-eyebrow">Werkwijze</div>
+    <h2 class="section-title">Drie stappen, klaar.</h2>
+    <div class="steps-grid">
+      <div class="step">
+        <div class="step-num">01</div>
+        <span class="step-icon">📤</span>
+        <h3>Exporteer je bin als ALE-bestand</h3>
+        <p>Exporteer de bin met al het materiaal van je draaidag vanuit Avid Media Composer als ALE-bestand.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <span class="step-icon">🔄</span>
+        <h3>Verwerk in Continuity Bridge</h3>
+        <p>Drag & Drop je ALE-bestand en je continuïteitsrapporten in Continuity Bridge, en klik op Verwerk. Dat is alles.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <span class="step-icon">📥</span>
+        <h3>Importeer terug in Avid</h3>
+        <p>Importeer je ALE-bestand terug in Avid. Alle comments en ratings uit je continuïteitsrapporten staan er nu gewoon in.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURE 1 -->
+  <div class="feature-block">
+    <div class="feature-img-wrap" style="aspect-ratio: auto; height: auto; background: transparent;">
+      <img class="feature-img" src="pdf-screenshot.png" alt="Continuïteitsrapport PDF" style="object-fit: unset; width: 100%; height: auto;" />
+    </div>
+    <div class="feature-content">
+      <div class="section-eyebrow">Rapporten</div>
+      <h2>Lees je rapporten uit in seconden.</h2>
+      <p>Continuity Bridge leest je continuïteitsrapporten uit en zet comments en ratings direct in je bin.</p>
+      <ul class="feature-list">
+        <li>Scènes, takes en beschrijvingen worden herkend</li>
+        <li>Ratings ook in hun eigen kolom</li>
+        <li>Gemaakt door een editor, voor editors</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- FEATURE 2 -->
+  <div class="feature-block reverse">
+    <div class="feature-img-wrap crop-bottom">
+      <img class="feature-img" src="ale-screenshot.png" alt="ALE bestand" />
+    </div>
+    <div class="feature-content">
+      <div class="section-eyebrow">Avid ALE</div>
+      <h2>Geen handmatig copy-pasten meer.</h2>
+      <p>Het ALE-bestand dat Continuity Bridge aanmaakt merge je eenvoudig met je originele clips in Avid. Alle info wordt automatisch toegevoegd.</p>
+      <ul class="feature-list">
+        <li>Merge ALE metadata direct met je bestaande clips in Avid</li>
+        <li>Je originele metadata blijft intact</li>
+        <li>Opgeslagen naast je originele ALE</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- FEATURE 3 -->
+  <div class="feature-block">
+    <div class="feature-img-wrap">
+      <img class="feature-img" src="avid-bin-screenshot.png" alt="Avid Bin met continuity comments" />
+    </div>
+    <div class="feature-content">
+      <div class="section-eyebrow">Resultaat</div>
+      <h2>Zie direct wat de script supervisor had opgemerkt.</h2>
+      <p>Comments, ratings en opmerkingen per take, gewoon zichtbaar in je bin. Precies waar je ze nodig hebt.</p>
+      <ul class="feature-list">
+        <li>Opmerkingen per take direct leesbaar</li>
+        <li>Kies je eigen kolom waar welke note moet komen</li>
+        <li>Geen extra vensters, geen zoeken</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- TESTIMONIAL -->
+  <section class="testimonial-section">
+    <div class="testimonial-inner">
+      <p class="testimonial-quote">
+        "Continuity Bridge bespaart me per draaidag minstens 20 minuten copy pasten."
+      </p>
+      <div class="testimonial-author">Max, Assistant Editor</div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="faq-section">
+    <div class="section-wrap">
+      <div class="section-eyebrow">Veelgestelde vragen</div>
+      <h2 class="section-title">FAQ</h2>
+      <div class="faq-list">
+
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">Ik krijg een waarschuwing dat de app van een onbekende ontwikkelaar is — wat nu?</button>
+          <div class="faq-a" style="flex-direction:column;gap:16px;">
+            <p>Dit is een standaard macOS-beveiliging voor apps buiten de App Store. Je kunt dit veilig negeren — Continuity Bridge bevat geen malware. We werken aan een Apple Developer-certificaat zodat deze melding verdwijnt.</p>
+            <p><strong>Stap 1</strong> — Je ziet dit venster als je de app voor het eerst opent. Klik op <strong>Klaar</strong>.</p>
+            <img src="security-step0.png" alt="Continuity Bridge niet geopend" style="width:100%;max-width:280px;border-radius:8px;opacity:0.92;" />
+            <p><strong>Stap 2</strong> — Ga naar <strong>Systeeminstellingen → Privacy en beveiliging</strong> en klik op <strong>Toch openen</strong>.</p>
+            <img src="security-step1.png" alt="Privacy en beveiliging – Toch openen" style="width:100%;max-width:480px;border-radius:8px;opacity:0.92;" />
+            <p><strong>Stap 3</strong> — Bevestig door opnieuw op <strong>Toch openen</strong> te klikken.</p>
+            <img src="security-step2.png" alt="Bevestig openen" style="width:100%;max-width:280px;border-radius:8px;opacity:0.92;" />
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">Hoe importeer ik het verwerkte ALE terug in Avid?</button>
+          <div class="faq-a faq-a--split">
+            <img src="avid-import-settings.png" alt="Avid Import Settings" style="width:220px;flex-shrink:0;border-radius:8px;opacity:0.92;align-self:flex-start;" />
+            <span>Ga in Avid naar <strong>Preferences → User → Import → Shot Log</strong>. Kies onder Events de optie <strong>Merge events with known master clips</strong>. Zo voegt Avid de comments en ratings toe aan je bestaande clips in plaats van nieuwe clips aan te maken.</span>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">Welke PDF-formaten worden ondersteund?</button>
+          <div class="faq-a">Continuity Bridge ondersteunt de meeste gangbare continuïteitsrapporten. Werkt jouw rapport niet goed? Stuur het op via <a href="mailto:support@studiomichielboesveldt.nl">support@studiomichielboesveldt.nl</a> en we kijken ernaar.</div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">Verdwijnt mijn info na het maken van een multiclip?</button>
+          <div class="faq-a">Dat kan. Importeer de ALE altijd <strong>vóórdat</strong> je multiclips aanmaakt. Avid draagt metadata niet automatisch over aan bestaande multiclips.</div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">Werkt Continuity Bridge offline?</button>
+          <div class="faq-a">Ja, volledig. Na activatie heeft de app geen internetverbinding nodig. Verwerking gebeurt lokaal op je Mac of pc.</div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">Kan ik de licentie op meerdere Macs gebruiken?</button>
+          <div class="faq-a">Een licentie is gekoppeld aan één machine. Ga je over naar een nieuwe Mac? Verwijder de licentie eerst op je oude Mac via <strong>Help → Verwijder licentie</strong>, en activeer daarna op je nieuwe Mac. Ben je dat vergeten of loop je ergens tegenaan? Stuur een mail naar <a href="mailto:support@studiomichielboesveldt.nl">support@studiomichielboesveldt.nl</a>.</div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">Wat gebeurt er als mijn licentie verloopt?</button>
+          <div class="faq-a">Na een jaar stopt de app met verwerken totdat je verlengt. Je bestanden blijven gewoon intact — er verdwijnt niets.</div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">Welke versie van Avid Media Composer heb ik nodig?</button>
+          <div class="faq-a">Elke versie die ALE-bestanden kan exporteren en importeren. Dat geldt voor alle gangbare versies van Avid Media Composer.</div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-q" aria-expanded="false">Mijn clips worden niet herkend — wat nu?</button>
+          <div class="faq-a">Controleer of de clipnamen in je ALE overeenkomen met de namen in het continuïteitsrapport. Kleine afwijkingen in naamgeving kunnen zorgen voor een mismatch. Neem anders contact op via <a href="mailto:support@studiomichielboesveldt.nl">support@studiomichielboesveldt.nl</a>.</div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section class="pricing-section">
+    <div class="pricing-card">
+      <div class="intro-tag">🎉 Speciale introductieprijs</div>
+      <div class="pricing-name">Jaarlicentie</div>
+      <p class="pricing-desc">Voor één Mac of pc, een jaar lang. Na betaling krijg je meteen de serial in je mail.</p>
+      <div style="display:flex;align-items:baseline;gap:12px;justify-content:center;">
+        <span style="font-size:22px;color:var(--dim);text-decoration:line-through;text-decoration-color:var(--dim);font-family:var(--body);font-weight:500;">€ 14,99</span>
+        <span class="price-amount">€ 4,99</span>
+        <span class="price-period"> / jaar</span>
+      </div>
+      <div class="price-note">Betaling via Mollie · Serial direct per e-mail</div>
+      <div class="pricing-ctas" style="flex-direction:column;align-items:center;">
+
+        <!-- Step 1: buy trigger -->
+        <button class="btn-buy" id="btn-koop" onclick="showCheckout()">
+          🛒 Koop licentie
+        </button>
+
+        <!-- Step 2: checkout form -->
+        <form class="checkout-form" id="checkout-form" onsubmit="submitCheckout(event)">
+          <div>
+            <label for="cb-name">Naam</label>
+            <input type="text" id="cb-name" name="name" placeholder="Je volledige naam" required autocomplete="name" />
+          </div>
+          <div>
+            <label for="cb-email">E-mailadres</label>
+            <input type="email" id="cb-email" name="email" placeholder="voor@je-serial.nl" required autocomplete="email" />
+          </div>
+          <div class="checkout-error" id="checkout-error"></div>
+          <button class="btn-buy" type="submit" id="btn-submit" style="width:100%;justify-content:center;">
+            Afrekenen via Mollie →
+          </button>
+        </form>
+
+        <a class="btn-outline" id="btn-download" href="https://github.com/scprdytj2s-beep/continuity-bridge/releases/latest/download/ContinuityBridge-Silicon.dmg">
+          🍎 Download Mac
+        </a>
+        <div id="dl-alt" style="font-size:12px;color:var(--muted);margin-top:4px;text-align:center;"></div>
+        <script>
+          (function(){
+            var ua = navigator.userAgent;
+            var btn = document.getElementById('btn-download');
+            var alt = document.getElementById('dl-alt');
+            var base = 'download.html?platform=';
+            if (/Windows/i.test(ua)) {
+              btn.href = base + 'windows';
+              btn.innerHTML = '🪟 Download Windows';
+            } else {
+              btn.href = base + 'silicon';
+              btn.innerHTML = '🍎 Download Mac (Apple Silicon)';
+              alt.innerHTML = 'Oudere Intel Mac? <a href="' + base + 'intel" style="color:var(--accent);text-decoration:underline;">Download Intel versie</a>';
+            }
+          })();
+        </script>
+      </div>
+      <div class="pricing-features">
+        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> Eénjarige licentie, jouw Mac</div>
+        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> Gratis updates inbegrepen</div>
+        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> Werkt volledig offline</div>
+        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> macOS 13+ (Intel) · 14+ (Silicon)</div>
+        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> Windows 10 / 11</div>
+        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> Support via e-mail</div>
+        <div class="pricing-feature"><span class="feat-icon feat-no">✕</span> Geen automatische verlenging</div>
+        <div class="pricing-feature"><span class="feat-icon feat-no">✕</span> Geen account of cloud vereist</div>
+      </div>
+
+      <div class="beta-inline">
+        <span class="beta-pill">🧪 Beta</span>
+        <p>Continuity Bridge is momenteel in beta en wordt actief doorontwikkeld. Hoewel de app uitgebreid getest wordt, kunnen sommige functies nog veranderen of onverwachte resultaten geven. Feedback, ideeën, vragen of bug reports zijn altijd welkom. Neem gerust contact op.</p>
+      </div>
+    </div>
+  </section>
+
+
+
+  <!-- CONTACT -->
+  <section class="contact-section">
+    <div class="contact-inner">
+      <div class="section-eyebrow" style="justify-content:center">Contact</div>
+      <h2 class="contact-title">Een vraag of opmerking?</h2>
+      <p class="contact-sub">Stuur een bericht en ik kom zo snel mogelijk bij je terug.</p>
+      <form class="contact-form" action="https://formspree.io/f/xaqklekb" method="POST">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="name">Naam</label>
+            <input type="text" id="name" name="name" placeholder="Je naam" required />
+          </div>
+          <div class="form-group">
+            <label for="email">E-mailadres</label>
+            <input type="email" id="email" name="email" placeholder="je@email.nl" required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="message">Bericht</label>
+          <textarea id="message" name="message" rows="5" placeholder="Je vraag, feedback of bug report..." required></textarea>
+        </div>
+        <button type="submit" class="btn-submit">Verstuur bericht</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <p>© 2026 Studio Michiel Boesveldt · Continuity Bridge</p>
+    <a href="mailto:support@studiomichielboesveldt.nl">support@studiomichielboesveldt.nl</a>
+  </footer>
+
+<script>
+// FAQ accordion
+document.querySelectorAll('.faq-q').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const answer  = btn.nextElementSibling;
+    const isOpen  = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', !isOpen);
+    answer.classList.toggle('open', !isOpen);
+  });
+});
+
+function showCheckout() {
+  document.getElementById('btn-koop').style.display = 'none';
+  const form = document.getElementById('checkout-form');
+  form.classList.add('visible');
+  document.getElementById('cb-name').focus();
+}
+
+async function submitCheckout(e) {
+  e.preventDefault();
+  const name    = document.getElementById('cb-name').value.trim();
+  const email   = document.getElementById('cb-email').value.trim();
+  const btn     = document.getElementById('btn-submit');
+  const errEl   = document.getElementById('checkout-error');
+
+  errEl.classList.remove('visible');
+  btn.disabled = true;
+  btn.textContent = 'Bezig…';
+
+  try {
+    const res  = await fetch('/api/create-payment', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ name, email }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.checkoutUrl) {
+      throw new Error(data.error || 'Onbekende fout');
+    }
+    window.location.href = data.checkoutUrl;
+  } catch (err) {
+    errEl.textContent = err.message || 'Er ging iets mis. Probeer het opnieuw.';
+    errEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Afrekenen via Mollie →';
+  }
+}
+</script>
+
+</body>
+</html>

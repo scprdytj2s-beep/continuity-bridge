@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Feedback — Continuity Bridge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,700&family=Figtree:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0C0618;
+      --surface:  #130825;
+      --surface2: #1A0E35;
+      --border:   #2C1A58;
+      --border2:  #3D2278;
+      --text:     #EDE8FF;
+      --muted:    #8070B8;
+      --dim:      #4A3280;
+      --accent:   #9B40FF;
+      --accent2:  #C084FC;
+      --violet:   #7B28DF;
+      --success:  #4ED98A;
+      --error:    #FF6B6B;
+      --display:  'Fraunces', serif;
+      --body:     'Figtree', sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      font-weight: 400;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 70% -10%, rgba(155,64,255,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 40% at -10% 60%, rgba(123,40,223,0.09) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 30% at 50% 100%, rgba(78,217,138,0.04) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(6,10,20,0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding: 0 52px;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      text-decoration: none;
+    }
+
+    .nav-logo img {
+      width: 32px;
+      height: 32px;
+      border-radius: 7px;
+    }
+
+    .nav-logo-text {
+      font-family: var(--body);
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text);
+      letter-spacing: 0.01em;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .btn-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--accent);
+      color: #fff;
+      font-family: var(--body);
+      font-weight: 600;
+      font-size: 13px;
+      padding: 8px 18px;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .btn-nav:hover { background: var(--accent2); }
+
+    /* ── Page ── */
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 80px 24px 120px;
+    }
+
+    .page-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent2);
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-family: 'Fraunces', serif;
+      font-weight: 900;
+      font-size: clamp(32px, 4vw, 48px);
+      line-height: 1.06;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.6;
+      margin-bottom: 48px;
+    }
+
+    /* ── Form ── */
+    .form-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px;
+    }
+
+    .field {
+      margin-bottom: 24px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .type-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .type-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 10px;
+      color: var(--muted);
+      font-family: var(--body);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+    }
+
+    .type-btn:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .type-btn.active {
+      background: rgba(155, 64, 255, 0.15);
+      border-color: var(--accent);
+      color: var(--accent2);
+    }
+
+    input[type="text"],
+    input[type="email"],
+    textarea,
+    select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: var(--text);
+      font-family: var(--body);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s;
+      resize: vertical;
+    }
+
+    input[type="text"]:focus,
+    input[type="email"]:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--accent);
+    }
+
+    textarea { min-height: 120px; }
+
+    select option { background: var(--surface2); }
+
+    .btn-submit {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      font-family: var(--body);
+      font-weight: 700;
+      font-size: 15px;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+      margin-top: 8px;
+    }
+
+    .btn-submit:hover { background: var(--violet); }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── States ── */
+    .state-success,
+    .state-error {
+      display: none;
+      border-radius: 10px;
+      padding: 16px 20px;
+      font-size: 14px;
+      margin-top: 20px;
+      line-height: 1.5;
+    }
+
+    .state-success {
+      background: rgba(78,217,138,0.1);
+      border: 1px solid rgba(78,217,138,0.3);
+      color: var(--success);
+    }
+
+    .state-error {
+      background: rgba(255,107,107,0.1);
+      border: 1px solid rgba(255,107,107,0.3);
+      color: var(--error);
+    }
+
+    /* ── Recent items ── */
+    .recent-section {
+      margin-top: 48px;
+    }
+
+    .recent-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .issue-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .issue-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .issue-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .badge-bug { background: rgba(255,107,107,0.15); color: #FF6B6B; }
+    .badge-layout { background: rgba(155,64,255,0.15); color: var(--accent2); }
+    .badge-request { background: rgba(78,217,138,0.15); color: var(--success); }
+
+    .issue-body { flex: 1; }
+    .issue-title { font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.4; }
+    .issue-meta { font-size: 12px; color: var(--dim); margin-top: 4px; }
+
+    .loading-items {
+      color: var(--dim);
+      font-size: 13px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    @media (max-width: 600px) {
+      nav { padding: 0 20px; }
+      .page { padding: 48px 16px 80px; }
+      .form-card { padding: 24px 20px; }
+      .type-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="nav-logo" href="/cbapp/">
+      <img src="/cbapp/logo.png" alt="Continuity Bridge" />
+      <span class="nav-logo-text">Continuity Bridge</span>
+    </a>
+    <div class="nav-right">
+      <a class="btn-nav" href="/cbapp/">← Terug naar site</a>
+    </div>
+  </nav>
+
+  <div class="page">
+    <div class="page-tag">Beta feedback</div>
+    <h1>Bug of verzoek melden</h1>
+    <p class="subtitle">Werkt iets niet zoals verwacht, of heb je een idee voor een verbetering? Laat het hier weten — Michiel pakt het op bij de volgende versie.</p>
+
+    <div class="form-card">
+      <form id="feedbackForm">
+
+        <div class="field">
+          <label>Type</label>
+          <div class="type-grid">
+            <button type="button" class="type-btn active" data-value="Bug">🐛 Bug</button>
+            <button type="button" class="type-btn" data-value="Layout">📐 Layout</button>
+            <button type="button" class="type-btn" data-value="Verzoek">💡 Verzoek</button>
+          </div>
+          <input type="hidden" id="issueType" value="Bug" />
+        </div>
+
+        <div class="field">
+          <label>Naam</label>
+          <input type="text" id="name" placeholder="Bijv. Wouter" autocomplete="given-name" />
+        </div>
+
+        <div class="field">
+          <label>Versie</label>
+          <select id="version">
+            <option value="v1.3">v1.3 (huidig)</option>
+            <option value="v1.2.1">v1.2.1</option>
+            <option value="v1.2">v1.2</option>
+            <option value="onbekend">Weet ik niet</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Beschrijving <span style="color:var(--accent)">*</span></label>
+          <textarea id="description" placeholder="Beschrijf zo concreet mogelijk wat er mis gaat of wat je zou willen zien…" required></textarea>
+        </div>
+
+        <div class="field">
+          <label>Stappen om te reproduceren <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">(optioneel)</span></label>
+          <textarea id="steps" placeholder="1. Open de app&#10;2. Sleep een PDF in…&#10;3. …" style="min-height:80px"></textarea>
+        </div>
+
+        <button type="submit" class="btn-submit" id="submitBtn">Versturen</button>
+
+        <div class="state-success" id="stateSuccess">
+          ✅ Ontvangen! Michiel pakt het op bij de volgende versie.
+        </div>
+        <div class="state-error" id="stateError">
+          ❌ Er ging iets mis. Probeer het opnieuw of stuur een mailtje.
+        </div>
+
+      </form>
+    </div>
+
+    <div class="recent-section">
+      <div class="recent-title">Recent gemeld</div>
+      <div class="issue-list" id="issueList">
+        <div class="loading-items">Laden…</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Type buttons
+    const typeBtns = document.querySelectorAll('.type-btn');
+    typeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        typeBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('issueType').value = btn.dataset.value;
+      });
+    });
+
+    // Submit
+    document.getElementById('feedbackForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      const desc = document.getElementById('description').value.trim();
+      if (!desc) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Versturen…';
+
+      const payload = {
+        type:        document.getElementById('issueType').value,
+        name:        document.getElementById('name').value.trim() || 'Anoniem',
+        version:     document.getElementById('version').value,
+        description: desc,
+        steps:       document.getElementById('steps').value.trim(),
+      };
+
+      try {
+        const res = await fetch('/api/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          document.getElementById('stateSuccess').style.display = 'block';
+          document.getElementById('feedbackForm').reset();
+          document.getElementById('issueType').value = 'Bug';
+          typeBtns.forEach((b, i) => b.classList.toggle('active', i === 0));
+          loadIssues();
+        } else {
+          throw new Error();
+        }
+      } catch {
+        document.getElementById('stateError').style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Versturen';
+      }
+    });
+
+    // Load recent issues
+    async function loadIssues() {
+      try {
+        const res = await fetch('/api/feedback');
+        const issues = await res.json();
+        const list = document.getElementById('issueList');
+
+        if (!issues.length) {
+          list.innerHTML = '<div class="loading-items">Nog geen meldingen.</div>';
+          return;
+        }
+
+        list.innerHTML = issues.map(issue => {
+          const type = issue.type || 'Bug';
+          const badgeClass = type === 'Bug' ? 'badge-bug' : type === 'Layout' ? 'badge-layout' : 'badge-request';
+          const date = new Date(issue.created_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+          return `
+            <div class="issue-item">
+              <span class="issue-badge ${badgeClass}">${type}</span>
+              <div class="issue-body">
+                <div class="issue-title">${escHtml(issue.title)}</div>
+                <div class="issue-meta">${escHtml(issue.reporter)} · ${escHtml(issue.version)} · ${date}</div>
+              </div>
+            </div>`;
+        }).join('');
+      } catch {
+        document.getElementById('issueList').innerHTML = '';
+      }
+    }
+
+    function escHtml(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    loadIssues();
+  </script>
+
+</body>
+</html>

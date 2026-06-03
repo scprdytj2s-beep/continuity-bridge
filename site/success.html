@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Betaling gelukt – Continuity Bridge</title>
+  <link rel="icon" href="logo.png" />
+  <style>
+    :root {
+      --bg: #080808;
+      --surface: #111;
+      --border: #222;
+      --text: #e8e8e8;
+      --muted: #888;
+      --gold: #d4a853;
+      --success: #3ecf8e;
+      --body: 'Georgia', serif;
+      --mono: 'SF Mono', 'Fira Code', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 52px 44px;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      animation: fadeUp 0.4s ease;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .check {
+      width: 64px; height: 64px;
+      background: rgba(62,207,142,.12);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 28px;
+      font-size: 30px;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 12px;
+      letter-spacing: -.02em;
+    }
+    .sub {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: 36px;
+    }
+    .info-box {
+      background: #0d0d0d;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      font-size: 14px;
+      color: #bbb;
+      line-height: 1.7;
+      margin-bottom: 32px;
+      text-align: left;
+    }
+    .info-box strong { color: var(--text); }
+    .back-link {
+      display: inline-block;
+      font-size: 14px;
+      color: var(--gold);
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.2s;
+    }
+    .back-link:hover { border-color: var(--gold); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="check">✓</div>
+    <h1 id="title">Bedankt!</h1>
+    <p class="sub" id="sub">
+      Je betaling is ontvangen. Je serial number is onderweg naar je e-mailadres
+      — check ook je spamfolder als je niets ziet.
+    </p>
+    <div class="info-box">
+      <strong>Wat nu?</strong><br/>
+      Open de e-mail van <em>licentie@studiomichielboesveldt.nl</em> en voer je serial
+      in via <strong>Instellingen → Licentie activeren</strong> in de app.
+      Vragen? Stuur een mail naar
+      <a href="mailto:support@studiomichielboesveldt.nl" style="color:var(--gold);">support@studiomichielboesveldt.nl</a>.
+    </div>
+    <a class="back-link" href="/cbapp/">← Terug naar Continuity Bridge</a>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const name = params.get('name');
+    if (name) {
+      document.getElementById('title').textContent = `Bedankt, ${decodeURIComponent(name)}!`;
+    }
+  </script>
+</body>
+</html>
