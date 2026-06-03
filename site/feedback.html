@@ -403,6 +403,7 @@
     <div class="form-card">
       <form id="feedbackForm">
 
+        <!-- Type -->
         <div class="field">
           <label>Type</label>
           <div class="type-grid">
@@ -412,9 +413,15 @@
           <input type="hidden" id="issueType" value="Bug" />
         </div>
 
+        <!-- Naam + Email -->
         <div class="field">
           <label>Naam</label>
           <input type="text" id="name" placeholder="Jouw naam" autocomplete="given-name" />
+        </div>
+
+        <div class="field">
+          <label>E-mailadres <span style="color:var(--accent)">*</span></label>
+          <input type="email" id="email" placeholder="jouw@email.nl" autocomplete="email" required />
         </div>
 
         <div class="field">
@@ -427,32 +434,38 @@
           </select>
         </div>
 
-        <div class="field">
-          <label>Platform</label>
-          <div class="type-grid" style="grid-template-columns: repeat(3, 1fr);">
-            <button type="button" class="type-btn active" data-platform="Mac (Apple Silicon)">🍎 Mac Silicon</button>
-            <button type="button" class="type-btn" data-platform="Mac (Intel)">💻 Mac Intel</button>
-            <button type="button" class="type-btn" data-platform="Windows">🪟 Windows</button>
+        <!-- Bug-only fields -->
+        <div id="bugFields">
+          <div class="field">
+            <label>Platform</label>
+            <div class="type-grid" style="grid-template-columns: repeat(3, 1fr);">
+              <button type="button" class="type-btn active" data-platform="Mac (Apple Silicon)">🍎 Mac Silicon</button>
+              <button type="button" class="type-btn" data-platform="Mac (Intel)">💻 Mac Intel</button>
+              <button type="button" class="type-btn" data-platform="Windows">🪟 Windows</button>
+            </div>
+            <input type="hidden" id="platform" value="Mac (Apple Silicon)" />
           </div>
-          <input type="hidden" id="platform" value="Mac (Apple Silicon)" />
+
+          <div class="field">
+            <label>macOS / Windows versie <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">(optioneel)</span></label>
+            <input type="text" id="osVersion" placeholder="Bijv. macOS 15.4 of Windows 11" />
+          </div>
         </div>
 
-        <div class="field">
-          <label>macOS / Windows versie <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">(optioneel)</span></label>
-          <input type="text" id="osVersion" placeholder="Bijv. macOS 15.4 of Windows 11" />
-        </div>
-
+        <!-- Beschrijving -->
         <div class="field">
           <label>Beschrijving <span style="color:var(--accent)">*</span></label>
           <textarea id="description" placeholder="Beschrijf zo concreet mogelijk wat er mis gaat of wat je zou willen zien…" required></textarea>
         </div>
 
-        <div class="field">
+        <!-- Bug-only: stappen -->
+        <div class="field" id="stepsField">
           <label>Wat deed je op het moment dat het misging? <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">(optioneel)</span></label>
           <textarea id="steps" placeholder="Bijv: ik had een PDF ingeladen, klikte op Verwerken, en toen…" style="min-height:80px"></textarea>
         </div>
 
-        <div class="field">
+        <!-- Bug-only: screenshot -->
+        <div class="field" id="screenshotField">
           <label>Screenshot <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">(optioneel)</span></label>
           <div class="upload-area" id="uploadArea">
             <input type="file" id="screenshot" accept="image/*" style="display:none" />
@@ -468,10 +481,29 @@
           </div>
         </div>
 
+        <!-- Verzoek-only: bestand uploaden -->
+        <div class="field" id="requestFileField" style="display:none">
+          <label>Bestand meesturen <span style="color:var(--dim);font-weight:400;text-transform:none;letter-spacing:0">(optioneel)</span></label>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px;line-height:1.5">Stuur een voorbeeldrapport (PDF) of een ALE/bin-bestand mee zodat Michiel precies kan zien wat je bedoelt.</p>
+          <div class="upload-area" id="requestFileArea">
+            <input type="file" id="requestFile" accept=".pdf,.ale,.bin,.txt" style="display:none" />
+            <div class="upload-placeholder" id="requestFilePlaceholder">
+              <span style="font-size:24px">📄</span>
+              <span>Klik om een bestand toe te voegen</span>
+              <span style="font-size:12px;color:var(--dim)">PDF, ALE of bin — max 10 MB</span>
+            </div>
+            <div class="file-chosen" id="fileChosen" style="display:none;padding:14px 16px;display:none;align-items:center;gap:10px;">
+              <span style="font-size:20px">📄</span>
+              <span id="fileChosenName" style="font-size:13px;color:var(--text);flex:1"></span>
+              <button type="button" class="remove-img" id="removeFile" style="position:static">✕</button>
+            </div>
+          </div>
+        </div>
+
         <button type="submit" class="btn-submit" id="submitBtn">Versturen</button>
 
         <div class="state-success" id="stateSuccess">
-          ✅ Ontvangen! Michiel pakt het op bij de volgende versie.
+          ✅ Ontvangen! Je krijgt een bevestiging per mail. Michiel pakt het op bij de volgende versie.
         </div>
         <div class="state-error" id="stateError">
           ❌ Er ging iets mis. Probeer het opnieuw of stuur een mailtje.
@@ -489,13 +521,25 @@
   </div>
 
   <script>
-    // Type buttons
+    // Type toggle — show/hide bug vs verzoek fields
+    function setType(type) {
+      const isBug = type === 'Bug';
+      document.getElementById('bugFields').style.display      = isBug ? '' : 'none';
+      document.getElementById('stepsField').style.display     = isBug ? '' : 'none';
+      document.getElementById('screenshotField').style.display = isBug ? '' : 'none';
+      document.getElementById('requestFileField').style.display = isBug ? 'none' : '';
+      document.getElementById('description').placeholder = isBug
+        ? 'Beschrijf zo concreet mogelijk wat er mis gaat…'
+        : 'Welke aanpassing wil je? Bijv: rapport van merk X wordt niet herkend, of ik wil kolom Y kunnen meenemen in de ALE…';
+    }
+
     const typeBtns = document.querySelectorAll('[data-value]');
     typeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         typeBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         document.getElementById('issueType').value = btn.dataset.value;
+        setType(btn.dataset.value);
       });
     });
 
@@ -510,8 +554,8 @@
     });
 
     // Screenshot upload
-    const uploadArea = document.getElementById('uploadArea');
-    const fileInput  = document.getElementById('screenshot');
+    const uploadArea  = document.getElementById('uploadArea');
+    const fileInput   = document.getElementById('screenshot');
     uploadArea.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', () => showPreview(fileInput.files[0]));
     document.getElementById('removeImg').addEventListener('click', (e) => {
@@ -532,6 +576,24 @@
       reader.readAsDataURL(file);
     }
 
+    // Request file upload
+    const requestFileArea  = document.getElementById('requestFileArea');
+    const requestFileInput = document.getElementById('requestFile');
+    requestFileArea.addEventListener('click', () => requestFileInput.click());
+    requestFileInput.addEventListener('change', () => {
+      const f = requestFileInput.files[0];
+      if (!f) return;
+      document.getElementById('fileChosenName').textContent = f.name;
+      document.getElementById('fileChosen').style.display = 'flex';
+      document.getElementById('requestFilePlaceholder').style.display = 'none';
+    });
+    document.getElementById('removeFile').addEventListener('click', (e) => {
+      e.stopPropagation();
+      requestFileInput.value = '';
+      document.getElementById('fileChosen').style.display = 'none';
+      document.getElementById('requestFilePlaceholder').style.display = 'flex';
+    });
+
     function fileToBase64(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -544,38 +606,53 @@
     // Submit
     document.getElementById('feedbackForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const btn = document.getElementById('submitBtn');
+      const btn  = document.getElementById('submitBtn');
       const desc = document.getElementById('description').value.trim();
-      if (!desc) return;
+      const email = document.getElementById('email').value.trim();
+      if (!desc || !email) return;
 
       btn.disabled = true;
       btn.textContent = 'Versturen…';
+      document.getElementById('stateSuccess').style.display = 'none';
+      document.getElementById('stateError').style.display   = 'none';
 
+      const type = document.getElementById('issueType').value;
+
+      // Screenshot (bug)
       const screenshotFile = fileInput.files[0];
-      let screenshotB64 = null;
-      let screenshotName = null;
+      let screenshotB64 = null, screenshotName = null;
       if (screenshotFile) {
         if (screenshotFile.size > 5 * 1024 * 1024) {
-          document.getElementById('stateError').textContent = '❌ Screenshot is te groot (max 5 MB).';
-          document.getElementById('stateError').style.display = 'block';
-          btn.disabled = false;
-          btn.textContent = 'Versturen';
-          return;
+          showError('❌ Screenshot is te groot (max 5 MB).');
+          btn.disabled = false; btn.textContent = 'Versturen'; return;
         }
         screenshotB64  = await fileToBase64(screenshotFile);
         screenshotName = screenshotFile.name;
       }
 
+      // Request file (verzoek)
+      const reqFile = requestFileInput.files[0];
+      let requestFileB64 = null, requestFileName = null;
+      if (reqFile) {
+        if (reqFile.size > 10 * 1024 * 1024) {
+          showError('❌ Bestand is te groot (max 10 MB).');
+          btn.disabled = false; btn.textContent = 'Versturen'; return;
+        }
+        requestFileB64  = await fileToBase64(reqFile);
+        requestFileName = reqFile.name;
+      }
+
       const payload = {
-        type:          document.getElementById('issueType').value,
-        name:          document.getElementById('name').value.trim() || 'Anoniem',
-        version:       document.getElementById('version').value,
-        platform:      document.getElementById('platform').value,
-        osVersion:     document.getElementById('osVersion').value.trim(),
-        description:   desc,
-        steps:         document.getElementById('steps').value.trim(),
-        screenshotB64,
-        screenshotName,
+        type,
+        name:           document.getElementById('name').value.trim() || 'Anoniem',
+        email,
+        version:        document.getElementById('version').value,
+        platform:       type === 'Bug' ? document.getElementById('platform').value : null,
+        osVersion:      type === 'Bug' ? document.getElementById('osVersion').value.trim() : null,
+        description:    desc,
+        steps:          type === 'Bug' ? document.getElementById('steps').value.trim() : null,
+        screenshotB64,  screenshotName,
+        requestFileB64, requestFileName,
       };
 
       try {
@@ -584,23 +661,35 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-
         if (res.ok) {
           document.getElementById('stateSuccess').style.display = 'block';
           document.getElementById('feedbackForm').reset();
+          setType('Bug');
           document.getElementById('issueType').value = 'Bug';
           typeBtns.forEach((b, i) => b.classList.toggle('active', i === 0));
+          platformBtns.forEach((b, i) => b.classList.toggle('active', i === 0));
+          document.getElementById('platform').value = 'Mac (Apple Silicon)';
+          document.getElementById('uploadPreview').style.display = 'none';
+          document.getElementById('uploadPlaceholder').style.display = 'flex';
+          document.getElementById('fileChosen').style.display = 'none';
+          document.getElementById('requestFilePlaceholder').style.display = 'flex';
           loadIssues();
         } else {
           throw new Error();
         }
       } catch {
-        document.getElementById('stateError').style.display = 'block';
+        showError('❌ Er ging iets mis. Probeer het opnieuw of stuur een mailtje.');
       } finally {
         btn.disabled = false;
         btn.textContent = 'Versturen';
       }
     });
+
+    function showError(msg) {
+      const el = document.getElementById('stateError');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
 
     // Load recent issues
     async function loadIssues() {
