@@ -19,12 +19,13 @@ On an Intel Mac:
 Produces: `ContinuityBridge-Intel-X.Y.Z.dmg`
 
 ### Windows
-Requires a Windows machine with Python 3.13+:
+On a Windows machine with Python 3.13+:
+```batch
+build-windows.bat
+```
+Then upload the .exe manually:
 ```bash
-pip install pyinstaller pdfplumber pillow certifi
-pyinstaller -y --clean continuity_bridge_win.spec
-# Creates: dist/ContinuityBridge-X.Y.Z.exe
-# Then upload to GitHub release v1.3.Y manually
+gh release upload v1.3.4 "dist/ContinuityBridge-1.3.4.exe" --clobber
 ```
 
 ## Release Workflow
