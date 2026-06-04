@@ -29,6 +29,7 @@ a = Analysis(
         'tkinter.filedialog',
         'tkinter.messagebox',
         'urllib.request',
+        'certifi',
         'json',
         'hmac',
         'hashlib',

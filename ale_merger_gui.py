@@ -1757,14 +1757,20 @@ class App:
             import urllib.request, json as _json2, ssl as _ssl
             def _do():
                 try:
-                    # SSL context: probeer systeemcerts, val terug op unverified
-                    try:
-                        _ctx = _ssl.create_default_context()
-                    except Exception:
-                        _ctx = _ssl._create_unverified_context()
+                    # SSL context: certifi → systeemcerts → unverified
+                    def _make_ctx():
+                        try:
+                            import certifi as _certifi
+                            return _ssl.create_default_context(cafile=_certifi.where())
+                        except Exception:
+                            pass
+                        try:
+                            return _ssl.create_default_context()
+                        except Exception:
+                            return _ssl._create_unverified_context()
                     req = urllib.request.Request(RELEASES_URL,
                           headers={"User-Agent": "ContinuityBridge"})
-                    with urllib.request.urlopen(req, timeout=10, context=_ctx) as r:
+                    with urllib.request.urlopen(req, timeout=10, context=_make_ctx()) as r:
                         releases = _json2.loads(r.read())
                     if not isinstance(releases, list) or not releases:
                         if not silent:
@@ -1848,9 +1854,13 @@ class App:
                 import urllib.request as _ur2, tempfile, os, sys as _sys3, ssl as _ssl2
                 try:
                     try:
-                        _ctx2 = _ssl2.create_default_context()
+                        import certifi as _certifi2
+                        _ctx2 = _ssl2.create_default_context(cafile=_certifi2.where())
                     except Exception:
-                        _ctx2 = _ssl2._create_unverified_context()
+                        try:
+                            _ctx2 = _ssl2.create_default_context()
+                        except Exception:
+                            _ctx2 = _ssl2._create_unverified_context()
                     # ── Download ──────────────────────────────────────────────
                     ext = '.exe' if _sys3.platform == 'win32' else '.dmg'
                     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
