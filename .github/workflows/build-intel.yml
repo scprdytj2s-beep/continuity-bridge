@@ -23,12 +23,14 @@ jobs:
 
       - name: Build DMG
         run: |
+          VERSION=$(grep "^VERSION" ale_merger_gui.py | grep -o '[0-9][0-9.]*' | head -1)
           pyinstaller -y --clean continuity_bridge.spec
           hdiutil create \
             -volname "Continuity Bridge" \
             -srcfolder "dist/Continuity Bridge.app" \
             -ov -format UDZO \
-            -o "/tmp/ContinuityBridge-Intel.dmg"
+            -o "/tmp/ContinuityBridge-Intel-${VERSION}.dmg"
+          echo "DMGFILE=/tmp/ContinuityBridge-Intel-${VERSION}.dmg" >> $GITHUB_ENV
 
       - name: Upload naar GitHub Release
         env:
@@ -44,4 +46,4 @@ jobs:
           gh release view "$TAG" || gh release create "$TAG" \
             --title "Continuity Bridge $TAG" \
             --notes "Release $TAG"
-          gh release upload "$TAG" "/tmp/ContinuityBridge-Intel.dmg" --clobber
+          gh release upload "$TAG" "${{ env.DMGFILE }}" --clobber

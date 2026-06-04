@@ -22,7 +22,12 @@ jobs:
         run: pip install pyinstaller pdfplumber pillow certifi
 
       - name: Build EXE
-        run: pyinstaller -y --clean continuity_bridge_win.spec
+        run: |
+          $version = (Select-String -Path ale_merger_gui.py -Pattern 'VERSION\s+=\s+"([0-9.]+)' -AllMatches).Matches[0].Groups[1].Value
+          pyinstaller -y --clean continuity_bridge_win.spec
+          mv "dist/ContinuityBridge.exe" "dist/ContinuityBridge-${version}.exe"
+          echo "EXEFILE=dist/ContinuityBridge-${version}.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        shell: pwsh
 
       - name: Upload naar GitHub Release
         env:
@@ -38,4 +43,4 @@ jobs:
           gh release view "$TAG" || gh release create "$TAG" \
             --title "Continuity Bridge $TAG" \
             --notes "Release $TAG"
-          gh release upload "$TAG" "dist/ContinuityBridge.exe" --clobber
+          gh release upload "$TAG" "${{ env.EXEFILE }}" --clobber
