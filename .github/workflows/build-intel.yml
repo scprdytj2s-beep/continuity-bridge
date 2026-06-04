@@ -1,0 +1,47 @@
+name: Build Intel Mac
+
+on:
+  workflow_dispatch:   # handmatig starten
+  push:
+    tags:
+      - 'v*'          # automatisch bij elke versie-tag
+
+jobs:
+  build:
+    runs-on: macos-13  # Intel Mac (macos-latest = Silicon, macos-13 = Intel)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python instellen
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Dependencies installeren
+        run: pip install pyinstaller pdfplumber pillow certifi
+
+      - name: Build DMG
+        run: |
+          pyinstaller -y --clean continuity_bridge.spec
+          hdiutil create \
+            -volname "Continuity Bridge" \
+            -srcfolder "dist/Continuity Bridge.app" \
+            -ov -format UDZO \
+            -o "/tmp/ContinuityBridge-Intel.dmg"
+
+      - name: Upload naar GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [ -z "$TAG" ] || [[ "$TAG" != v* ]]; then
+            TAG=$(grep "^VERSION" ale_merger_gui.py | grep -o '[0-9][0-9.]*' | head -1)
+            TAG="v${TAG}"
+          fi
+          echo "Uploaden naar release: $TAG"
+          gh release view "$TAG" || gh release create "$TAG" \
+            --title "Continuity Bridge $TAG" \
+            --notes "Release $TAG"
+          gh release upload "$TAG" "/tmp/ContinuityBridge-Intel.dmg" --clobber
