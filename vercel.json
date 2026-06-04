@@ -11,6 +11,8 @@
     { "source": "/cbapp/success.html", "destination": "/site/success.html" },
     { "source": "/cbapp/:file", "destination": "/site/:file" },
     { "source": "/cbapp", "destination": "/site/index.html" },
-    { "source": "/", "destination": "/site/home.html" }
+    { "source": "/cbapp/", "destination": "/site/index.html" },
+    { "source": "/", "destination": "/site/home.html" },
+    { "source": "/index.html", "destination": "/site/home.html" }
   ]
 }
