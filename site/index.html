@@ -132,6 +132,29 @@
     .nav-feedback:hover { color: var(--text); }
     .show-mobile { display: none; }
 
+    .lang-switcher {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .lang-btn {
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      color: var(--dim);
+      font-family: var(--body);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      padding: 4px 7px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .lang-btn:hover { color: var(--muted); border-color: var(--border); }
+    .lang-btn.active { color: var(--text); border-color: var(--border2); }
+
     /* ── HERO ── */
     .hero {
       position: relative;
@@ -1154,12 +1177,17 @@
       <span class="nav-logo-text">Continuity Bridge</span>
     </a>
     <div class="nav-right">
-      <span class="nav-price hide-mobile">🎉 Introductieprijs: <s style="opacity:0.45;text-decoration-color:var(--muted)">€ 14,99</s> € 4,99 / jaar</span>
+      <span class="nav-price hide-mobile" data-i18n-html="nav_price">🎉 Introductieprijs: <s style="opacity:0.45;text-decoration-color:var(--muted)">€ 14,99</s> € 4,99 / jaar</span>
       <a class="nav-feedback" href="feedback">
-        <span class="hide-mobile">🐛 Bug of verzoek</span>
-        <span class="show-mobile" aria-label="Meld een bug of verzoek">🐛</span>
+        <span class="hide-mobile" data-i18n="nav_feedback">🐛 Bug of verzoek</span>
+        <span class="show-mobile" data-i18n="nav_feedback_label" aria-label="Meld een bug of verzoek">🐛</span>
       </a>
-      <a class="btn-nav" id="btn-nav-download" href="download.html?platform=silicon">
+      <div class="lang-switcher hide-mobile">
+        <button class="lang-btn active" data-lang="nl">NL</button>
+        <button class="lang-btn" data-lang="en">EN</button>
+        <button class="lang-btn" data-lang="de">DE</button>
+      </div>
+      <a class="btn-nav" id="btn-nav-download" href="download.html?platform=silicon" data-i18n="nav_download">
         Download
       </a>
     </div>
@@ -1168,19 +1196,19 @@
   <!-- HERO -->
   <section class="hero">
     <div class="hero-left">
-      <div class="hero-tag fade-up"><span></span> v1.3.4 Beta</div>
-      <h1 class="fade-up">Van continuïteits&shy;rapport naar je <em>Avid Bin.</em></h1>
-      <p class="hero-sub fade-up">
+      <div class="hero-tag fade-up"><span></span> <span data-i18n="hero_tag">v1.3.4 Beta</span></div>
+      <h1 class="fade-up" data-i18n-html="hero_h1">Van continuïteits&shy;rapport naar je <em>Avid Bin.</em></h1>
+      <p class="hero-sub fade-up" data-i18n="hero_sub">
         Lees je PDF-continuïteitsrapporten uit en schrijf alle notities en ratings direct naar je Avid bin.
       </p>
       <div class="hero-ctas fade-up">
-        <a class="btn-primary" href="download.html?platform=silicon">
+        <a class="btn-primary" href="download.html?platform=silicon" data-i18n="hero_cta_silicon">
            Download Apple Silicon
         </a>
-        <a class="btn-outline" href="download.html?platform=intel">
+        <a class="btn-outline" href="download.html?platform=intel" data-i18n="hero_cta_intel">
            Intel Mac
         </a>
-        <a class="btn-outline" href="download.html?platform=windows">
+        <a class="btn-outline" href="download.html?platform=windows" data-i18n="hero_cta_windows">
           🪟 Windows (10/11)
         </a>
       </div>
@@ -1190,16 +1218,16 @@
           v1.3.4 Beta
         </a>
         <span class="version-sep">·</span>
-        <span class="version-meta">4 juni 2026</span>
+        <span class="version-meta" data-i18n="hero_date">4 juni 2026</span>
         <span class="version-sep">·</span>
-        <a class="version-link" href="changelog">
+        <a class="version-link" href="changelog" data-i18n="hero_whats_new">
           Wat is er nieuw? →
         </a>
       </div>
       <div class="hero-stats fade-up">
         <div class="hero-stat">
           <strong>macOS 13+</strong>
-          <span>Intel · macOS 14+ Silicon</span>
+          <span data-i18n="hero_stat_intel">Intel · macOS 14+ Silicon</span>
         </div>
         <div class="hero-stat">
           <strong>Windows 10 / 11</strong>
@@ -1207,7 +1235,7 @@
         </div>
         <div class="hero-stat">
           <strong>🎉 € 4,99 / jaar</strong>
-          <span>Intro · <s style="opacity:0.5">€ 14,99</s></span>
+          <span data-i18n-html="hero_stat_price_sub">Intro · <s style="opacity:0.5">€ 14,99</s></span>
         </div>
       </div>
     </div>
@@ -1223,26 +1251,26 @@
 
   <!-- HOW IT WORKS -->
   <section class="steps-section">
-    <div class="section-eyebrow">Werkwijze</div>
-    <h2 class="section-title">Drie stappen, klaar.</h2>
+    <div class="section-eyebrow" data-i18n="steps_eyebrow">Werkwijze</div>
+    <h2 class="section-title" data-i18n="steps_title">Drie stappen, klaar.</h2>
     <div class="steps-grid">
       <div class="step">
         <div class="step-num">01</div>
         <span class="step-icon">📤</span>
-        <h3>Exporteer je bin als ALE-bestand</h3>
-        <p>Exporteer de bin met al het materiaal van je draaidag vanuit Avid Media Composer als ALE-bestand.</p>
+        <h3 data-i18n="step1_title">Exporteer je bin als ALE-bestand</h3>
+        <p data-i18n="step1_body">Exporteer de bin met al het materiaal van je draaidag vanuit Avid Media Composer als ALE-bestand.</p>
       </div>
       <div class="step">
         <div class="step-num">02</div>
         <span class="step-icon">🔄</span>
-        <h3>Verwerk in Continuity Bridge</h3>
-        <p>Drag & Drop je ALE-bestand en je continuïteitsrapporten in Continuity Bridge, en klik op Verwerk. Dat is alles.</p>
+        <h3 data-i18n="step2_title">Verwerk in Continuity Bridge</h3>
+        <p data-i18n="step2_body">Drag & Drop je ALE-bestand en je continuïteitsrapporten in Continuity Bridge, en klik op Verwerk. Dat is alles.</p>
       </div>
       <div class="step">
         <div class="step-num">03</div>
         <span class="step-icon">📥</span>
-        <h3>Importeer terug in Avid</h3>
-        <p>Importeer je ALE-bestand terug in Avid. Alle comments en ratings uit je continuïteitsrapporten staan er nu gewoon in.</p>
+        <h3 data-i18n="step3_title">Importeer terug in Avid</h3>
+        <p data-i18n="step3_body">Importeer je ALE-bestand terug in Avid. Alle comments en ratings uit je continuïteitsrapporten staan er nu gewoon in.</p>
       </div>
     </div>
   </section>
@@ -1253,13 +1281,13 @@
       <img class="feature-img" src="pdf-screenshot.png" alt="Continuïteitsrapport PDF" style="object-fit: unset; width: 100%; height: auto;" />
     </div>
     <div class="feature-content">
-      <div class="section-eyebrow">Rapporten</div>
-      <h2>Lees je rapporten uit in seconden.</h2>
-      <p>Continuity Bridge leest je continuïteitsrapporten uit en zet comments en ratings direct in je bin.</p>
+      <div class="section-eyebrow" data-i18n="feat1_eyebrow">Rapporten</div>
+      <h2 data-i18n="feat1_title">Lees je rapporten uit in seconden.</h2>
+      <p data-i18n="feat1_body">Continuity Bridge leest je continuïteitsrapporten uit en zet comments en ratings direct in je bin.</p>
       <ul class="feature-list">
-        <li>Scènes, takes en beschrijvingen worden herkend</li>
-        <li>Ratings ook in hun eigen kolom</li>
-        <li>Gemaakt door een editor, voor editors</li>
+        <li data-i18n="feat1_li1">Scènes, takes en beschrijvingen worden herkend</li>
+        <li data-i18n="feat1_li2">Ratings ook in hun eigen kolom</li>
+        <li data-i18n="feat1_li3">Gemaakt door een editor, voor editors</li>
       </ul>
     </div>
   </div>
@@ -1270,13 +1298,13 @@
       <img class="feature-img" src="ale-screenshot.png" alt="ALE bestand" />
     </div>
     <div class="feature-content">
-      <div class="section-eyebrow">Avid ALE</div>
-      <h2>Geen handmatig copy-pasten meer.</h2>
-      <p>Het ALE-bestand dat Continuity Bridge aanmaakt merge je eenvoudig met je originele clips in Avid. Alle info wordt automatisch toegevoegd.</p>
+      <div class="section-eyebrow" data-i18n="feat2_eyebrow">Avid ALE</div>
+      <h2 data-i18n="feat2_title">Geen handmatig copy-pasten meer.</h2>
+      <p data-i18n="feat2_body">Het ALE-bestand dat Continuity Bridge aanmaakt merge je eenvoudig met je originele clips in Avid. Alle info wordt automatisch toegevoegd.</p>
       <ul class="feature-list">
-        <li>Merge ALE metadata direct met je bestaande clips in Avid</li>
-        <li>Je originele metadata blijft intact</li>
-        <li>Opgeslagen naast je originele ALE</li>
+        <li data-i18n="feat2_li1">Merge ALE metadata direct met je bestaande clips in Avid</li>
+        <li data-i18n="feat2_li2">Je originele metadata blijft intact</li>
+        <li data-i18n="feat2_li3">Opgeslagen naast je originele ALE</li>
       </ul>
     </div>
   </div>
@@ -1287,13 +1315,13 @@
       <img class="feature-img" src="avid-bin-screenshot.png" alt="Avid Bin met continuity comments" />
     </div>
     <div class="feature-content">
-      <div class="section-eyebrow">Resultaat</div>
-      <h2>Zie direct wat de script supervisor had opgemerkt.</h2>
-      <p>Comments, ratings en opmerkingen per take, gewoon zichtbaar in je bin. Precies waar je ze nodig hebt.</p>
+      <div class="section-eyebrow" data-i18n="feat3_eyebrow">Resultaat</div>
+      <h2 data-i18n="feat3_title">Zie direct wat de script supervisor had opgemerkt.</h2>
+      <p data-i18n="feat3_body">Comments, ratings en opmerkingen per take, gewoon zichtbaar in je bin. Precies waar je ze nodig hebt.</p>
       <ul class="feature-list">
-        <li>Opmerkingen per take direct leesbaar</li>
-        <li>Kies je eigen kolom waar welke note moet komen</li>
-        <li>Geen extra vensters, geen zoeken</li>
+        <li data-i18n="feat3_li1">Opmerkingen per take direct leesbaar</li>
+        <li data-i18n="feat3_li2">Kies je eigen kolom waar welke note moet komen</li>
+        <li data-i18n="feat3_li3">Geen extra vensters, geen zoeken</li>
       </ul>
     </div>
   </div>
@@ -1302,82 +1330,79 @@
   <section class="testimonial-section">
     <div class="testimonial-inner">
       <p class="testimonial-quote">
-        "Continuity Bridge bespaart me per draaidag minstens 20 minuten copy pasten."
+        <span data-i18n="testimonial_quote">"Continuity Bridge bespaart me per draaidag minstens 20 minuten copy pasten."</span>
       </p>
-      <div class="testimonial-author">Max, Assistant Editor</div>
+      <div class="testimonial-author" data-i18n="testimonial_author">Max, Assistant Editor</div>
     </div>
   </section>
 
   <!-- FAQ -->
   <section class="faq-section">
     <div class="section-wrap">
-      <div class="section-eyebrow">Veelgestelde vragen</div>
-      <h2 class="section-title">FAQ</h2>
+      <div class="section-eyebrow" data-i18n="faq_eyebrow">Veelgestelde vragen</div>
+      <h2 class="section-title" data-i18n="faq_title">FAQ</h2>
       <div class="faq-list">
 
         <div class="faq-item">
-          <button class="faq-q" aria-expanded="false">Ik krijg een waarschuwing dat de app van een onbekende ontwikkelaar is — wat nu?</button>
+          <button class="faq-q" aria-expanded="false" data-i18n="faq1_q">Ik krijg een waarschuwing dat de app van een onbekende ontwikkelaar is — wat nu?</button>
           <div class="faq-a" style="flex-direction:column;gap:16px;">
-            <p>Dit is een standaard macOS-beveiliging voor apps buiten de App Store. Je kunt dit veilig negeren — Continuity Bridge bevat geen malware. We werken aan een Apple Developer-certificaat zodat deze melding verdwijnt.</p>
-
+            <p data-i18n="faq1_a">Dit is een standaard macOS-beveiliging voor apps buiten de App Store. Je kunt dit veilig negeren — Continuity Bridge bevat geen malware. We werken aan een Apple Developer-certificaat zodat deze melding verdwijnt.</p>
             <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:rgba(155,64,255,0.07);border:1px solid rgba(155,64,255,0.15);border-radius:10px;">
-              <p><strong style="color:var(--accent2)">Stap 1</strong> — Je ziet dit venster als je de app voor het eerst opent. Klik op <strong>Klaar</strong>.</p>
+              <p data-i18n-html="faq1_s1"><strong style="color:var(--accent2)">Stap 1</strong> — Je ziet dit venster als je de app voor het eerst opent. Klik op <strong>Klaar</strong>.</p>
               <img src="security-step0.png" alt="Continuity Bridge niet geopend" style="width:100%;max-width:280px;border-radius:8px;opacity:0.92;" />
             </div>
-
             <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:rgba(155,64,255,0.07);border:1px solid rgba(155,64,255,0.15);border-radius:10px;">
-              <p><strong style="color:var(--accent2)">Stap 2</strong> — Ga naar <strong>Systeeminstellingen → Privacy en beveiliging</strong> en klik op <strong>Toch openen</strong>.</p>
+              <p data-i18n-html="faq1_s2"><strong style="color:var(--accent2)">Stap 2</strong> — Ga naar <strong>Systeeminstellingen → Privacy en beveiliging</strong> en klik op <strong>Toch openen</strong>.</p>
               <img src="security-step1.png" alt="Privacy en beveiliging – Toch openen" style="width:100%;max-width:480px;border-radius:8px;opacity:0.92;" />
             </div>
-
             <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:rgba(155,64,255,0.07);border:1px solid rgba(155,64,255,0.15);border-radius:10px;">
-              <p><strong style="color:var(--accent2)">Stap 3</strong> — Bevestig door opnieuw op <strong>Toch openen</strong> te klikken.</p>
+              <p data-i18n-html="faq1_s3"><strong style="color:var(--accent2)">Stap 3</strong> — Bevestig door opnieuw op <strong>Toch openen</strong> te klikken.</p>
               <img src="security-step2.png" alt="Bevestig openen" style="width:100%;max-width:280px;border-radius:8px;opacity:0.92;" />
             </div>
           </div>
         </div>
 
         <div class="faq-item">
-          <button class="faq-q" aria-expanded="false">Hoe importeer ik het verwerkte ALE terug in Avid?</button>
+          <button class="faq-q" aria-expanded="false" data-i18n="faq2_q">Hoe importeer ik het verwerkte ALE terug in Avid?</button>
           <div class="faq-a faq-a--split">
             <img src="avid-import-settings.png" alt="Avid Import Settings" style="width:220px;flex-shrink:0;border-radius:8px;opacity:0.92;align-self:flex-start;" />
-            <span>Ga in Avid naar <strong>Preferences → User → Import → Shot Log</strong>. Kies onder Events de optie <strong>Merge events with known master clips</strong>. Zo voegt Avid de comments en ratings toe aan je bestaande clips in plaats van nieuwe clips aan te maken.</span>
+            <span data-i18n-html="faq2_a">Ga in Avid naar <strong>Preferences → User → Import → Shot Log</strong>. Kies onder Events de optie <strong>Merge events with known master clips</strong>. Zo voegt Avid de comments en ratings toe aan je bestaande clips in plaats van nieuwe clips aan te maken.</span>
           </div>
         </div>
 
         <div class="faq-item">
-          <button class="faq-q" aria-expanded="false">Welke PDF-formaten worden ondersteund?</button>
-          <div class="faq-a">Continuity Bridge ondersteunt de meeste gangbare continuïteitsrapporten. Werkt jouw rapport niet goed? Stuur het op via <a href="mailto:support@studiomichielboesveldt.nl">support@studiomichielboesveldt.nl</a> en we kijken ernaar.</div>
+          <button class="faq-q" aria-expanded="false" data-i18n="faq3_q">Welke PDF-formaten worden ondersteund?</button>
+          <div class="faq-a" data-i18n-html="faq3_a">Continuity Bridge ondersteunt de meeste gangbare continuïteitsrapporten. Werkt jouw rapport niet goed? Stuur het op via <a href="mailto:support@studiomichielboesveldt.nl">support@studiomichielboesveldt.nl</a> en we kijken ernaar.</div>
         </div>
 
         <div class="faq-item">
-          <button class="faq-q" aria-expanded="false">Verdwijnt mijn info na het maken van een multiclip?</button>
-          <div class="faq-a">Dat kan. Importeer de ALE altijd <strong>vóórdat</strong> je multiclips aanmaakt. Avid draagt metadata niet automatisch over aan bestaande multiclips.</div>
+          <button class="faq-q" aria-expanded="false" data-i18n="faq4_q">Verdwijnt mijn info na het maken van een multiclip?</button>
+          <div class="faq-a" data-i18n-html="faq4_a">Dat kan. Importeer de ALE altijd <strong>vóórdat</strong> je multiclips aanmaakt. Avid draagt metadata niet automatisch over aan bestaande multiclips.</div>
         </div>
 
         <div class="faq-item">
-          <button class="faq-q" aria-expanded="false">Werkt Continuity Bridge offline?</button>
-          <div class="faq-a">Ja, volledig. Na activatie heeft de app geen internetverbinding nodig. Verwerking gebeurt lokaal op je Mac of pc.</div>
+          <button class="faq-q" aria-expanded="false" data-i18n="faq5_q">Werkt Continuity Bridge offline?</button>
+          <div class="faq-a" data-i18n="faq5_a">Ja, volledig. Na activatie heeft de app geen internetverbinding nodig. Verwerking gebeurt lokaal op je Mac of pc.</div>
         </div>
 
         <div class="faq-item">
-          <button class="faq-q" aria-expanded="false">Kan ik de licentie op meerdere Macs gebruiken?</button>
-          <div class="faq-a">Een licentie is gekoppeld aan één machine. Ga je over naar een nieuwe Mac? Verwijder de licentie eerst op je oude Mac via <strong>Help → Verwijder licentie</strong>, en activeer daarna op je nieuwe Mac. Ben je dat vergeten of loop je ergens tegenaan? Stuur een mail naar <a href="mailto:support@studiomichielboesveldt.nl">support@studiomichielboesveldt.nl</a>.</div>
+          <button class="faq-q" aria-expanded="false" data-i18n="faq6_q">Kan ik de licentie op meerdere Macs gebruiken?</button>
+          <div class="faq-a" data-i18n-html="faq6_a">Een licentie is gekoppeld aan één machine. Ga je over naar een nieuwe Mac? Verwijder de licentie eerst op je oude Mac via <strong>Help → Verwijder licentie</strong>, en activeer daarna op je nieuwe Mac. Ben je dat vergeten of loop je ergens tegenaan? Stuur een mail naar <a href="mailto:support@studiomichielboesveldt.nl">support@studiomichielboesveldt.nl</a>.</div>
         </div>
 
         <div class="faq-item">
-          <button class="faq-q" aria-expanded="false">Wat gebeurt er als mijn licentie verloopt?</button>
-          <div class="faq-a">Na een jaar stopt de app met verwerken totdat je verlengt. Je bestanden blijven gewoon intact — er verdwijnt niets.</div>
+          <button class="faq-q" aria-expanded="false" data-i18n="faq7_q">Wat gebeurt er als mijn licentie verloopt?</button>
+          <div class="faq-a" data-i18n="faq7_a">Na een jaar stopt de app met verwerken totdat je verlengt. Je bestanden blijven gewoon intact — er verdwijnt niets.</div>
         </div>
 
         <div class="faq-item">
-          <button class="faq-q" aria-expanded="false">Welke versie van Avid Media Composer heb ik nodig?</button>
-          <div class="faq-a">Elke versie die ALE-bestanden kan exporteren en importeren. Dat geldt voor alle gangbare versies van Avid Media Composer.</div>
+          <button class="faq-q" aria-expanded="false" data-i18n="faq8_q">Welke versie van Avid Media Composer heb ik nodig?</button>
+          <div class="faq-a" data-i18n="faq8_a">Elke versie die ALE-bestanden kan exporteren en importeren. Dat geldt voor alle gangbare versies van Avid Media Composer.</div>
         </div>
 
         <div class="faq-item">
-          <button class="faq-q" aria-expanded="false">Mijn clips worden niet herkend — wat nu?</button>
-          <div class="faq-a">Controleer of de clipnamen in je ALE overeenkomen met de namen in het continuïteitsrapport. Kleine afwijkingen in naamgeving kunnen zorgen voor een mismatch. Neem anders contact op via <a href="mailto:support@studiomichielboesveldt.nl">support@studiomichielboesveldt.nl</a>.</div>
+          <button class="faq-q" aria-expanded="false" data-i18n="faq9_q">Mijn clips worden niet herkend — wat nu?</button>
+          <div class="faq-a" data-i18n-html="faq9_a">Controleer of de clipnamen in je ALE overeenkomen met de namen in het continuïteitsrapport. Kleine afwijkingen in naamgeving kunnen zorgen voor een mismatch. Neem anders contact op via <a href="mailto:support@studiomichielboesveldt.nl">support@studiomichielboesveldt.nl</a>.</div>
         </div>
 
       </div>
@@ -1387,34 +1412,35 @@
   <!-- PRICING -->
   <section class="pricing-section">
     <div class="pricing-card">
-      <div class="intro-tag">🎉 Speciale introductieprijs</div>
-      <div class="pricing-name">Jaarlicentie</div>
-      <p class="pricing-desc">Voor één Mac of pc, een jaar lang. Na betaling krijg je meteen de serial in je mail.</p>
+      <div class="intro-tag" data-i18n="pricing_tag">🎉 Speciale introductieprijs</div>
+      <!-- i18n via JS -->
+      <div class="pricing-name" data-i18n="pricing_name">Jaarlicentie</div>
+      <p class="pricing-desc" data-i18n="pricing_desc">Voor één Mac of pc, een jaar lang. Na betaling krijg je meteen de serial in je mail.</p>
       <div style="display:flex;align-items:baseline;gap:12px;justify-content:center;">
         <span style="font-size:22px;color:var(--dim);text-decoration:line-through;text-decoration-color:var(--dim);font-family:var(--body);font-weight:500;">€ 14,99</span>
         <span class="price-amount">€ 4,99</span>
         <span class="price-period"> / jaar</span>
       </div>
-      <div class="price-note">Betaling via Mollie · Serial direct per e-mail</div>
+      <div class="price-note" data-i18n="price-note">Betaling via Mollie · Serial direct per e-mail</div>
       <div class="pricing-ctas" style="flex-direction:column;align-items:center;">
 
         <!-- Step 1: buy trigger -->
-        <button class="btn-buy" id="btn-koop" onclick="showCheckout()">
+        <button class="btn-buy" id="btn-koop" onclick="showCheckout()" data-i18n="btn_buy">
           🛒 Koop licentie
         </button>
 
         <!-- Step 2: checkout form -->
         <form class="checkout-form" id="checkout-form" onsubmit="submitCheckout(event)">
           <div>
-            <label for="cb-name">Naam</label>
-            <input type="text" id="cb-name" name="name" placeholder="Je volledige naam" required autocomplete="name" />
+            <label for="cb-name" data-i18n="form_name">Naam</label>
+            <input type="text" id="cb-name" name="name" placeholder="Je volledige naam" data-i18n-ph="form_name_ph" required autocomplete="name" />
           </div>
           <div>
-            <label for="cb-email">E-mailadres</label>
-            <input type="email" id="cb-email" name="email" placeholder="voor@je-serial.nl" required autocomplete="email" />
+            <label for="cb-email" data-i18n="form_email">E-mailadres</label>
+            <input type="email" id="cb-email" name="email" placeholder="voor@je-serial.nl" data-i18n-ph="form_email_ph" required autocomplete="email" />
           </div>
           <div class="checkout-error" id="checkout-error"></div>
-          <button class="btn-buy" type="submit" id="btn-submit" style="width:100%;justify-content:center;">
+          <button class="btn-buy" type="submit" id="btn-submit" style="width:100%;justify-content:center;" data-i18n="btn_checkout">
             Afrekenen via Mollie →
           </button>
         </form>
@@ -1474,19 +1500,19 @@
         </script>
       </div>
       <div class="pricing-features">
-        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> Eénjarige licentie, jouw Mac</div>
-        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> Gratis updates inbegrepen</div>
-        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> Werkt volledig offline</div>
-        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> macOS 13+ (Intel) · 14+ (Silicon)</div>
-        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> Windows 10 / 11</div>
-        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> Support via e-mail</div>
-        <div class="pricing-feature"><span class="feat-icon feat-no">✕</span> Geen automatische verlenging</div>
-        <div class="pricing-feature"><span class="feat-icon feat-no">✕</span> Geen account of cloud vereist</div>
+        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> <span data-i18n="feat_yes1">Eénjarige licentie, jouw Mac</span></div>
+        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> <span data-i18n="feat_yes2">Gratis updates inbegrepen</span></div>
+        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> <span data-i18n="feat_yes3">Werkt volledig offline</span></div>
+        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> <span data-i18n="feat_yes4">macOS 13+ (Intel) · 14+ (Silicon)</span></div>
+        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> <span data-i18n="feat_yes5">Windows 10 / 11</span></div>
+        <div class="pricing-feature"><span class="feat-icon feat-yes">✓</span> <span data-i18n="feat_yes6">Support via e-mail</span></div>
+        <div class="pricing-feature"><span class="feat-icon feat-no">✕</span> <span data-i18n="feat_no1">Geen automatische verlenging</span></div>
+        <div class="pricing-feature"><span class="feat-icon feat-no">✕</span> <span data-i18n="feat_no2">Geen account of cloud vereist</span></div>
       </div>
 
       <div class="beta-inline">
         <span class="beta-pill">🧪 Beta</span>
-        <p>Continuity Bridge is momenteel in beta en wordt actief doorontwikkeld. Hoewel de app uitgebreid getest wordt, kunnen sommige functies nog veranderen of onverwachte resultaten geven. Feedback, ideeën, vragen of bug reports zijn altijd welkom. Neem gerust contact op.</p>
+        <p data-i18n="beta_text">Continuity Bridge is momenteel in beta en wordt actief doorontwikkeld. Hoewel de app uitgebreid getest wordt, kunnen sommige functies nog veranderen of onverwachte resultaten geven. Feedback, ideeën, vragen of bug reports zijn altijd welkom. Neem gerust contact op.</p>
       </div>
     </div>
   </section>
@@ -1496,31 +1522,31 @@
   <!-- CONTACT -->
   <section class="contact-section">
     <div class="contact-inner">
-      <div class="section-eyebrow" style="justify-content:center">Contact</div>
-      <h2 class="contact-title">Een vraag of opmerking?</h2>
-      <p class="contact-sub">Voor algemene vragen kun je hier een bericht sturen. Heb je een bug gevonden of een verzoek? Gebruik dan het formulier hieronder.</p>
+      <div class="section-eyebrow" style="justify-content:center" data-i18n="contact_eyebrow">Contact</div>
+      <h2 class="contact-title" data-i18n="contact_title">Een vraag of opmerking?</h2>
+      <p class="contact-sub" data-i18n="contact_sub">Voor algemene vragen kun je hier een bericht sturen. Heb je een bug gevonden of een verzoek? Gebruik dan het formulier hieronder.</p>
       <form class="contact-form" action="https://formspree.io/f/xaqklekb" method="POST">
         <div class="form-row">
           <div class="form-group">
-            <label for="name">Naam</label>
-            <input type="text" id="name" name="name" placeholder="Je naam" required />
+            <label for="name" data-i18n="contact_name">Naam</label>
+            <input type="text" id="name" name="name" placeholder="Je naam" data-i18n-ph="contact_name_ph" required />
           </div>
           <div class="form-group">
-            <label for="email">E-mailadres</label>
-            <input type="email" id="email" name="email" placeholder="je@email.nl" required />
+            <label for="email" data-i18n="contact_email">E-mailadres</label>
+            <input type="email" id="email" name="email" placeholder="je@email.nl" data-i18n-ph="contact_email_ph" required />
           </div>
         </div>
         <div class="form-group">
-          <label for="message">Bericht</label>
-          <textarea id="message" name="message" rows="5" placeholder="Je vraag of opmerking…" required></textarea>
+          <label for="message" data-i18n="contact_msg">Bericht</label>
+          <textarea id="message" name="message" rows="5" placeholder="Je vraag of opmerking…" data-i18n-ph="contact_msg_ph" required></textarea>
         </div>
-        <button type="submit" class="btn-submit">Verstuur bericht</button>
+        <button type="submit" class="btn-submit" data-i18n="contact_send">Verstuur bericht</button>
       </form>
 
       <div style="margin-top:32px;padding-top:32px;border-top:1px solid var(--border);text-align:center;">
-        <p style="color:var(--muted);font-size:14px;margin-bottom:16px;">Iets gevonden dat niet werkt, of een idee voor een nieuwe functie?</p>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:16px;"><span data-i18n="contact_bug_sub">Iets gevonden dat niet werkt, of een idee voor een nieuwe functie?</span></p>
         <a href="feedback" style="display:inline-flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border2);color:var(--accent2);font-family:var(--body);font-weight:600;font-size:14px;padding:12px 24px;border-radius:8px;text-decoration:none;transition:all 0.2s;" onmouseover="this.style.background='rgba(155,64,255,0.15)'" onmouseout="this.style.background='var(--surface2)'">
-          🐛 Meld een bug of verzoek
+          <span data-i18n="contact_bug_btn">🐛 Meld een bug of verzoek</span>
         </a>
       </div>
     </div>
@@ -1528,10 +1554,11 @@
 
   <!-- FOOTER -->
   <footer>
-    <p>© 2026 Studio Michiel Boesveldt · Continuity Bridge</p>
+    <p><span data-i18n="footer">© 2026 Studio Michiel Boesveldt · Continuity Bridge</span></p>
     <a href="mailto:support@studiomichielboesveldt.nl">support@studiomichielboesveldt.nl</a>
   </footer>
 
+<script src="translations.js"></script>
 <script>
 // FAQ accordion
 document.querySelectorAll('.faq-q').forEach(btn => {
@@ -1559,7 +1586,7 @@ async function submitCheckout(e) {
 
   errEl.classList.remove('visible');
   btn.disabled = true;
-  btn.textContent = 'Bezig…';
+  btn.textContent = (TRANSLATIONS[getLang()]||TRANSLATIONS.nl).btn_loading || 'Bezig…';
 
   try {
     const res  = await fetch('/api/create-payment', {
@@ -1576,7 +1603,7 @@ async function submitCheckout(e) {
     errEl.textContent = err.message || 'Er ging iets mis. Probeer het opnieuw.';
     errEl.classList.add('visible');
     btn.disabled = false;
-    btn.textContent = 'Afrekenen via Mollie →';
+    btn.textContent = (TRANSLATIONS[getLang()]||TRANSLATIONS.nl).btn_checkout || 'Afrekenen via Mollie →';
   }
 }
 </script>
