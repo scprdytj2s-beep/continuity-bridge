@@ -2,6 +2,8 @@
   "version": 2,
   "public": true,
   "rewrites": [
+    { "source": "/cbapp/en", "destination": "/site/en.html" },
+    { "source": "/cbapp/de", "destination": "/site/de.html" },
     { "source": "/cbapp/feedback", "destination": "/site/feedback.html" },
     { "source": "/cbapp/feedback.html", "destination": "/site/feedback.html" },
     { "source": "/cbapp/changelog", "destination": "/site/changelog.html" },
