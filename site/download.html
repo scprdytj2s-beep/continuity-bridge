@@ -463,9 +463,9 @@
     const REPO = 'scprdytj2s-beep/continuity-bridge';
 
     const ASSETS = {
-      silicon: { name: 'ContinuityBridge-Silicon.dmg', label: 'Apple Silicon' },
-      intel:   { name: 'ContinuityBridge-Intel.dmg',   label: 'Intel Mac' },
-      windows: { name: 'ContinuityBridge.exe',          label: 'Windows' },
+      silicon: { prefix: 'ContinuityBridge-Silicon', ext: '.dmg', label: 'Apple Silicon' },
+      intel:   { prefix: 'ContinuityBridge-Intel',   ext: '.dmg', label: 'Intel Mac' },
+      windows: { prefix: 'ContinuityBridge',         ext: '.exe', label: 'Windows' },
     };
 
     const params   = new URLSearchParams(window.location.search);
@@ -546,7 +546,9 @@
         );
         if (!res.ok) { showUnavailable(); return; }
         const data = await res.json();
-        const asset = (data.assets || []).find(a => a.name === info.name);
+        const asset = (data.assets || []).find(a =>
+          a.name.startsWith(info.prefix) && a.name.endsWith(info.ext)
+        );
         if (asset) {
           showFound(asset.browser_download_url, data.tag_name);
         } else {
