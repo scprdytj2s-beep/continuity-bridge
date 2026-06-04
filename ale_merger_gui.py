@@ -1192,7 +1192,7 @@ _patch_nsmenuitem_for_macos15plus()
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.3.3 (Beta)"
+VERSION       = "1.3.4 (Beta)"
 GITHUB_REPO   = "scprdytj2s-beep/continuity-bridge"
 RELEASES_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases/latest"
@@ -1850,8 +1850,10 @@ class App:
             def _start():
                 if not dl_url:
                     _fallback(); return
-                upd_cv.config(state="disabled")
-                later_cv.config(state="disabled")
+                upd_cv.config(cursor="wait")
+                upd_cv.unbind("<Button-1>")
+                later_cv.config(cursor="arrow")
+                later_cv.unbind("<Button-1>")
                 threading.Thread(target=_download_and_install, daemon=True).start()
 
             def _download_and_install():
@@ -1954,8 +1956,10 @@ class App:
 
             def _on_error(err):
                 status_lbl.config(fg=ERROR, text=f"Fout: {err[:60]}")
-                upd_cv.config(state="normal")
-                later_cv.config(state="normal")
+                upd_cv.config(cursor="hand2")
+                upd_cv.bind("<Button-1>", lambda e: _start())
+                later_cv.config(cursor="hand2")
+                later_cv.bind("<Button-1>", lambda e: dlg.destroy())
 
             upd_cv = _rounded_btn(btn_frame, "Update & Herstart", _start,
                                    bg=AVID_B, hv=AVID_B_H, fg="white",
