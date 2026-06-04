@@ -1145,7 +1145,7 @@
     <div class="nav-right">
       <span class="nav-price">🎉 Introductieprijs: <s style="opacity:0.45;text-decoration-color:var(--muted)">€ 14,99</s> € 4,99 / jaar</span>
       <a style="font-size:13px;color:var(--muted);text-decoration:none;" href="feedback">🐛 Meld een bug of verzoek</a>
-      <a class="btn-nav" href="download.html?platform=silicon">
+      <a class="btn-nav" id="btn-nav-download" href="download.html?platform=silicon">
         Download
       </a>
     </div>
@@ -1402,17 +1402,50 @@
         <div id="dl-alt" style="font-size:12px;color:var(--muted);margin-top:4px;text-align:center;"></div>
         <script>
           (function(){
-            var ua = navigator.userAgent;
+            var ua  = navigator.userAgent;
             var btn = document.getElementById('btn-download');
+            var nav = document.getElementById('btn-nav-download');
             var alt = document.getElementById('dl-alt');
             var base = 'download.html?platform=';
+
+            // Platform detectie
+            // navigator.userAgentData is beschikbaar in Chrome/Edge en geeft exacte architectuur
+            function applyPlatform(platform) {
+              if (platform === 'windows') {
+                btn.href = base + 'windows';
+                btn.innerHTML = '🪟 Download Windows';
+                nav.href = base + 'windows';
+                nav.textContent = 'Download';
+              } else if (platform === 'intel') {
+                btn.href = base + 'intel';
+                btn.innerHTML = '🍎 Download Mac (Intel)';
+                nav.href = base + 'intel';
+                nav.textContent = 'Download';
+                alt.innerHTML = 'Apple Silicon Mac? <a href="' + base + 'silicon" style="color:var(--accent);text-decoration:underline;">Download Silicon versie</a>';
+              } else {
+                btn.href = base + 'silicon';
+                btn.innerHTML = '🍎 Download Mac (Apple Silicon)';
+                nav.href = base + 'silicon';
+                nav.textContent = 'Download';
+                alt.innerHTML = 'Oudere Intel Mac? <a href="' + base + 'intel" style="color:var(--accent);text-decoration:underline;">Download Intel versie</a>';
+              }
+            }
+
             if (/Windows/i.test(ua)) {
-              btn.href = base + 'windows';
-              btn.innerHTML = '🪟 Download Windows';
+              applyPlatform('windows');
+            } else if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+              // Moderne browsers: vraag exacte CPU architectuur op
+              navigator.userAgentData.getHighEntropyValues(['architecture']).then(function(info) {
+                var arch = (info.architecture || '').toLowerCase();
+                applyPlatform(arch === 'x86' ? 'intel' : 'silicon');
+              }).catch(function() {
+                applyPlatform('silicon'); // fallback
+              });
             } else {
-              btn.href = base + 'silicon';
-              btn.innerHTML = '🍎 Download Mac (Apple Silicon)';
-              alt.innerHTML = 'Oudere Intel Mac? <a href="' + base + 'intel" style="color:var(--accent);text-decoration:underline;">Download Intel versie</a>';
+              // Fallback: Safari geeft geen userAgentData, maar Intel Macs draaien vaak Rosetta
+              // Heuristic: als het geen Windows is gaan we uit van Silicon als default,
+              // met zichtbare Intel-link als alternatief
+              applyPlatform('silicon');
             }
           })();
         </script>
