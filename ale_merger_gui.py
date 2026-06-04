@@ -312,7 +312,7 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                     for row in tbls[0].extract():
                         if not row: continue
                         # Slate: numerieke waarde in kolom 7
-                        if len(row) > 7 and row[7] and re.match(r'^\d{3,4}[A-Za-z]?$', (row[7] or "").strip()):
+                        if len(row) > 7 and row[7] and re.match(r'^\d{2,4}[A-Za-z]?$', (row[7] or "").strip()):
                             slate = row[7].strip()
                         # Scene: kolom 2, niet de koptekst of CARD-rij
                         if len(row) > 2 and row[2] and row[2] not in ("SCENE", "DATUM", "SCÈNE"):
@@ -468,8 +468,204 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                                             _lvb_set(_make_clip_key("A", card_a, num), clip_info)
 
                 except Exception as _e:
-                    log(f"Fout bij LVB-pagina {page.page_number}: {_e}", "warn")
+                    log(f"Fout bij pagina {page.page_number}: {_e}", "warn")
                 continue  # LVB pagina verwerkt
+
+            # ── Dag & Nacht / Lemming formaat ─────────────────────────────
+            # Eén pagina per slate; KAART = camerarol (bv. "A012"), CLIP = clip-
+            # nummer (bv. "C001"); samen → "A012C001" → matcht ALE-prefix.
+            if "CONTINUÏTEITSRAPPORT" in text and "KAART" in text and "SLATE" in text:
+                try:
+                    tbls = page.find_tables()
+                    slate = scene = kaart = extra_notes = ""
+
+                    # Tabel met SLATE / SCENE / KAART (rij-georiënteerd)
+                    for tbl in tbls:
+                        ext = tbl.extract()
+                        if not ext: continue
+                        for row in ext:
+                            if not row or len(row) < 2: continue
+                            k = str(row[0] or "").strip()
+                            v = str(row[1] or "").strip()
+                            if k == "SLATE":  slate = v
+                            elif k == "SCENE": scene = v
+                            elif k == "KAART": kaart = v
+                        if slate and kaart:
+                            break
+
+                    if not kaart:
+                        continue
+
+                    # EXTRA NOTES tabel
+                    for tbl in tbls:
+                        ext = tbl.extract()
+                        if not ext: continue
+                        if str(ext[0][0] or "").strip() == "EXTRA NOTES:":
+                            parts = []
+                            for row in ext[1:]:
+                                if row and row[0]:
+                                    v = str(row[0]).strip()
+                                    if v and not v.startswith("scriptrapport"):
+                                        parts.append(v)
+                            extra_notes = " ".join(parts).strip()
+                            break
+
+                    # Take-tabel
+                    for tbl in tbls:
+                        ext = tbl.extract()
+                        if not ext: continue
+                        headers = [str(c or "").strip() for c in ext[0]]
+                        if "TAKE" not in headers or "CLIP" not in headers:
+                            continue
+                        take_i  = headers.index("TAKE")
+                        clip_i  = headers.index("CLIP")
+                        pu_i    = headers.index("PU") if "PU" in headers else None
+                        notes_i = headers.index("OPMERKINGEN") if "OPMERKINGEN" in headers else None
+
+                        for row in ext[1:]:
+                            if not row: continue
+                            take_str = str(row[take_i] or "").strip() if take_i < len(row) else ""
+                            clip_str = str(row[clip_i] or "").strip() if clip_i < len(row) else ""
+                            if not take_str or not clip_str: continue
+                            if not re.match(r'^\d+$', take_str): continue
+
+                            notes = ""
+                            if notes_i is not None and notes_i < len(row):
+                                notes = str(row[notes_i] or "").strip().replace("\n", " ")
+                                if notes == "-": notes = ""
+
+                            is_pu = (write_pu and pu_i is not None
+                                     and pu_i < len(row)
+                                     and str(row[pu_i] or "").strip() != "")
+
+                            clip_num = re.sub(r'\s+', '', clip_str)  # "C001"
+                            clip_info = {
+                                "circle":      "",
+                                "scene":       scene,
+                                "description": "",
+                                "take_notes":  notes or extra_notes,
+                                "page_note":   extra_notes,
+                                "is_pu":       is_pu,
+                            }
+                            # Sla op met zowel 3- als 4-cijferige padding zodat
+                            # zowel A-cameras (A012C001) als B-cameras (B007C0006)
+                            # matchen, ongeacht hoe de camera het bestand noemt.
+                            digits_m = re.search(r'\d+', clip_num)
+                            if digits_m:
+                                n = digits_m.group()
+                                for pad in (3, 4):
+                                    k = f"{kaart}C{n.zfill(pad)}"
+                                    if k not in clips:
+                                        clips[k] = dict(clip_info)
+                except Exception as _e:
+                    log(f"Fout bij pagina {page.page_number}: {_e}", "warn")
+                continue  # D&N pagina verwerkt
+
+            # ── TDDOS / CONTINUITY REPORT formaat ─────────────────────────
+            # Eén pagina per slate; ROLL NR. geeft clipnaam direct (bv. "A001C002").
+            # Meerdere slates kunnen dezelfde ROLL NR. delen → notities aggregeren.
+            if "ROLL NR." in text and "CONTINUITY" in text:
+                try:
+                    tbls = page.find_tables()
+                    slate_nr = scene = page_note = ""
+
+                    for tbl in tbls:
+                        ext = tbl.extract()
+                        if not ext or not ext[0] or len(ext[0]) < 2: continue
+                        h0 = str(ext[0][0] or "").strip()
+                        h1 = str(ext[0][1] or "").strip()
+                        if h0 == "SLATE": slate_nr = h1
+
+                    if not slate_nr:
+                        continue
+
+                    sm = re.search(r"SCENE\s+(\S+)", text)
+                    if sm: scene = sm.group(1)
+
+                    # Scene-code: "2.30A" → "30A" (deel na de punt)
+                    scene_code = scene.split(".")[-1] if "." in scene else scene
+
+                    # Pagina-notities (tabel met header 'Notes' en 1 kolom)
+                    for tbl in tbls:
+                        ext = tbl.extract()
+                        if not ext: continue
+                        if str(ext[0][0] or "").strip() == "Notes" and len(ext[0]) == 1:
+                            parts = [str(r[0]).replace("\n", " ").strip() for r in ext[1:]
+                                     if r and r[0] and str(r[0]).strip()]
+                            page_note = " ".join(parts).strip()
+                            break
+
+                    # Per-take: notities + sterren → één clip-key per take
+                    # Key-formaat: "{scene_code}-{slate:03d}-{take:02d}"
+                    # Matcht ALE Name: "02-30A-003-01"
+                    for tbl in tbls:
+                        ext = tbl.extract()
+                        if not ext: continue
+                        headers = [str(c or "").strip() for c in ext[0]]
+                        if "TAKE" not in headers or "Notes" not in headers:
+                            continue
+                        notes_i = headers.index("Notes")
+                        gng_i   = headers.index("G / NG") if "G / NG" in headers else None
+                        pu_i    = headers.index("PU") if "PU" in headers else None
+
+                        for ri, row in enumerate(tbl.rows[1:], 1):
+                            if ri >= len(ext): break
+                            take_str = str(ext[ri][0] or "").strip()
+                            if not re.match(r'^\d+$', take_str): continue
+
+                            note = str(ext[ri][notes_i] or "").replace("\n", " ").strip() if notes_i < len(ext[ri]) else ""
+
+                            # Sterren tellen via filled curves (≥10 punten)
+                            stars = 0
+                            if gng_i is not None:
+                                try:
+                                    cell = row.cells[gng_i]
+                                    x0, top, x1, bottom = cell
+                                    crop = page.crop((x0, top, x1, bottom))
+                                    stars = sum(1 for c in crop.curves
+                                                if c.get('fill') and len(c.get('pts', [])) >= 10)
+                                except Exception:
+                                    pass
+
+                            # PU detecteren via pixel-analyse (checkmark = donkere pixels)
+                            is_pu = False
+                            if write_pu and pu_i is not None:
+                                try:
+                                    pu_cell = row.cells[pu_i]
+                                    px0, ptop, px1, pbottom = pu_cell
+                                    pu_crop = page.crop((px0, ptop, px1, pbottom))
+                                    pu_img  = pu_crop.to_image(resolution=150).original.convert('L')
+                                    pw, ph  = pu_img.size
+                                    dark    = sum(1 for py in range(ph) for px in range(pw)
+                                                  if pu_img.getpixel((px, py)) < 80)
+                                    is_pu   = dark >= 30
+                                except Exception:
+                                    pass
+
+                            if not note and not stars and not is_pu:
+                                continue
+
+                            try:
+                                # Key: alleen slate+take (geen scene-code — die verschilt
+                                # tussen PDF-notatie en ALE-naamgeving)
+                                key = f"{int(slate_nr):03d}-{int(take_str):02d}"
+                            except ValueError:
+                                continue
+
+                            if key not in clips:
+                                clips[key] = {
+                                    "circle":      "",
+                                    "scene":       scene,
+                                    "description": "",
+                                    "take_notes":  note or page_note,
+                                    "page_note":   page_note,
+                                    "is_pu":       is_pu,
+                                    "stars":       str(stars) if stars else "",
+                                }
+
+                except Exception as _e:
+                    log(f"Fout bij pagina {page.page_number}: {_e}", "warn")
+                continue  # TDDOS pagina verwerkt
 
             # ── Waste Clips ────────────────────────────────────────────────
             if "Waste Clips" in text:
@@ -603,7 +799,7 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
                 sound_notes_col="Auto", camera_notes_col="Auto",
                 pu_col="Auto", pu_position="voor",
                 afg_col="Auto", afg_position="voor",
-                general_notes_col="Auto"):
+                general_notes_col="Auto", star_format="sterren"):
     with open(ale_path, "rb") as f:
         raw = f.read()
 
@@ -632,7 +828,11 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
     n_orig      = len(col_headers)
 
     def idx(name):
-        return col_headers.index(name) if name in col_headers else None
+        name_l = name.lower()
+        for i, h in enumerate(col_headers):
+            if h.lower() == name_l:
+                return i
+        return None
 
     name_idx  = idx("Name")
     tape_idx  = idx("Tape")
@@ -761,6 +961,11 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
 
     log(f"ALE kolommen ({len(col_headers)}): {', '.join(col_headers)}", "info")
 
+    # Bepaal of originele datarijen een trailing tab hebben (bewaar dit gedrag)
+    _orig_has_trailing_tab = any(
+        l.endswith("\t") for l in lines[data_idx + 1:] if l.strip()
+    )
+
     matched = 0
     new_data_lines = []
     for line in lines[data_idx + 1:]:
@@ -808,11 +1013,23 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
                     info = clip_data[key]
                     break
 
+        # TDDOS: ALE Name "DD-SCENE-SLATE-TAKE" → key "SLATE-TAKE"
+        # bv. "02-30B-009-01" → zoek "009-01" in clip_data
+        if info is None:
+            m_tddos = re.match(r'\d+-\S+?-(\d{3})-(\d+)', parts[name_idx])
+            if m_tddos:
+                tddos_key = f"{m_tddos.group(1)}-{m_tddos.group(2).zfill(2)}"
+                info = clip_data.get(tddos_key)
+
         if info:
             matched += 1
             if write_rating and rating_idx is not None:
                 if info.get("stars"):
-                    parts[rating_idx] = info["stars"]   # LVB: cijfer 1-5
+                    try:
+                        n = int(info["stars"])
+                        parts[rating_idx] = ("*" * n) if star_format == "sterren" else str(n)
+                    except (ValueError, TypeError):
+                        parts[rating_idx] = info["stars"]
                 elif info["circle"]:
                     parts[rating_idx] = info["circle"]  # andere formaten: V/X
             # Schrijf tekstvelden: zelfde kolom-idx → samenvoegen met " / "
@@ -825,9 +1042,13 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
             _cw_add(_cw, gen_notes_idx,  info.get("page_note"))
             for _i, _vals in _cw.items():
                 parts[_i] = " / ".join(_vals)
-            # Stars (apart: numeriek, nooit samenvoegen)
+            # Stars (apart, nooit samenvoegen) — zelfde format als rating
             if stars_idx is not None and info.get("stars"):
-                parts[stars_idx] = info["stars"]
+                try:
+                    n = int(info["stars"])
+                    parts[stars_idx] = ("*" * n) if star_format == "sterren" else str(n)
+                except (ValueError, TypeError):
+                    parts[stars_idx] = info["stars"]
             # PU-markering in kolom
             if info.get("is_pu") and pu_idx is not None:
                 existing = parts[pu_idx].strip()
@@ -842,10 +1063,14 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
                     parts[afg_idx] = (existing + " (AFG)").strip() if existing else "(AFG)"
                 else:
                     parts[afg_idx] = ("(AFG) " + existing).strip() if existing else "(AFG)"
-        new_data_lines.append("\t".join(parts) + "\t")
+        row_str = "\t".join(parts)
+        if new_cols or _orig_has_trailing_tab:
+            row_str += "\t"
+        new_data_lines.append(row_str)
 
     log(f"ALE verwerkt: {matched} clips bijgewerkt", "info")
-    out_lines = lines[:col_idx] + ["Column", "\t".join(col_headers) + "\t", "", "Data"] + new_data_lines
+    _hdr_sep = "\t" if (new_cols or lines[col_idx + 1].endswith("\t")) else ""
+    out_lines = lines[:col_idx] + ["Column", "\t".join(col_headers) + _hdr_sep, "", "Data"] + new_data_lines
     result = le.join(out_lines)
     if raw.endswith(le.encode()):
         result += le
@@ -860,14 +1085,12 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
 # Two-layer fix: NSAssertionHandler suppresses the assertion, AND we swizzle
 # the method to replace empty titles with a retained NSString.
 # ---------------------------------------------------------------------------
-def _patch_nsmenuitem_for_macos26():
+def _patch_nsmenuitem_for_macos15plus():
     import sys, platform as _plat
     if sys.platform != 'darwin':
         return
     try:
-        major = int(_plat.mac_ver()[0].split('.')[0])
-        if major < 26:
-            return
+        int(_plat.mac_ver()[0].split('.')[0])  # controleert dat het macOS is met een versienummer
     except Exception:
         return
 
@@ -886,7 +1109,7 @@ def _patch_nsmenuitem_for_macos26():
 
         _h = _SilentHandler.alloc().init()
         _NSThread.mainThread().threadDictionary()['NSAssertionHandler'] = _h
-        _patch_nsmenuitem_for_macos26._handler = _h
+        _patch_nsmenuitem_for_macos15plus._handler = _h
     except Exception:
         pass
 
@@ -952,20 +1175,20 @@ def _patch_nsmenuitem_for_macos26():
             return _orig_fn(self_, cmd, title, action, key)
 
         _new_imp = IMP_TYPE(_patched)
-        _patch_nsmenuitem_for_macos26._orig  = _orig_fn
-        _patch_nsmenuitem_for_macos26._new   = _new_imp
-        _patch_nsmenuitem_for_macos26._space = _space
+        _patch_nsmenuitem_for_macos15plus._orig  = _orig_fn
+        _patch_nsmenuitem_for_macos15plus._new   = _new_imp
+        _patch_nsmenuitem_for_macos15plus._space = _space
         libobjc.method_setImplementation(method, ctypes.cast(_new_imp, ctypes.c_void_p))
     except Exception:
         pass
 
-_patch_nsmenuitem_for_macos26()
+_patch_nsmenuitem_for_macos15plus()
 
 # ---------------------------------------------------------------------------
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.3 (Beta)"
+VERSION       = "1.3.1 (Beta)"
 GITHUB_REPO   = "scprdytj2s-beep/continuity-bridge"
 RELEASES_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases/latest"
@@ -1311,6 +1534,7 @@ _PREFS_FILE = _PREFS_DIR / "prefs.json"
 _PREFS_DEFAULTS = {
     "write_rating":       False,
     "rating_col":         "Auto",
+    "star_format":        "sterren",
     "write_notes":        True,
     "notes_col":          "Auto",
     "write_sound_notes":  False,
@@ -1451,6 +1675,7 @@ class App:
         # ── Voorkeuren laden ─────────────────────────────────────────────────
         _p = _load_prefs()
         self.write_rating     = tk.BooleanVar(value=_p["write_rating"])
+        self.star_format      = tk.StringVar(value=_p.get("star_format", "sterren"))
         self.write_notes      = tk.BooleanVar(value=_p.get("write_notes", True))
         self.notes_col        = tk.StringVar(value=_p["notes_col"])
         self.rating_col       = tk.StringVar(value=_p["rating_col"])
@@ -1474,6 +1699,7 @@ class App:
             _save_prefs({
                 "write_rating":       self.write_rating.get(),
                 "rating_col":         self.rating_col.get(),
+                "star_format":        self.star_format.get(),
                 "write_notes":        self.write_notes.get(),
                 "notes_col":          self.notes_col.get(),
                 "write_sound_notes":  self.write_sound_notes.get(),
@@ -1501,6 +1727,7 @@ class App:
             if self.notes_col.get()  in _INVALID_COL_VALUES: return
             _save_all()
         self.write_rating    .trace_add("write", _on_pref_change)
+        self.star_format     .trace_add("write", _on_pref_change)
         self.write_notes     .trace_add("write", _on_pref_change)
         self.notes_col       .trace_add("write", _on_pref_change)
         self.rating_col      .trace_add("write", _on_pref_change)
@@ -2500,6 +2727,11 @@ class App:
             pass
 
         self.root.bind_all('<Command-comma>', lambda e: self._show_prefs())
+        self.root.bind_all('<Command-q>', lambda e: self.root.quit())
+        try:
+            self.root.createcommand('tk::mac::Quit', self.root.quit)
+        except Exception:
+            pass
 
         # Startup update-check (stil — alleen tonen bij nieuwere versie)
         self.root.after(2000, lambda: _check_updates(silent=True))
@@ -2701,7 +2933,7 @@ class App:
                  font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
         _cb(r2, self.notes_col, self.NOTES_COLS)
 
-        # Rating: checkbox + "→" + kolom-dropdown
+        # Rating: checkbox + "→" + kolom-dropdown + format (sterren/***/cijfer)
         r1 = _row("Rating")
         tk.Checkbutton(r1, variable=self.write_rating,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
@@ -2710,6 +2942,13 @@ class App:
         tk.Label(r1, text="→", bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
         _cb(r1, self.rating_col, self.RATING_COLS)
+        tk.Label(r1, text="sterren als:", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 10)).pack(side="left", padx=(10, 4))
+        ttk.Combobox(r1, textvariable=self.star_format,
+                     values=["sterren (***)", "cijfer (1-5)"],
+                     state="readonly", width=13,
+                     style="CB.TCombobox",
+                     font=("Helvetica Neue", 11)).pack(side="left")
 
         # PU: checkbox + "→" + kolom-dropdown + voor/achter
         PU_COLS = ["Auto", "Comment", "Comments", "Notes", "Take_Notes"]
@@ -3618,7 +3857,9 @@ class App:
                                               if self.write_afg_in_notes.get() else "Uit"),
                                      afg_position=self.afg_position.get(),
                                      general_notes_col=(self.general_notes_col.get()
-                                                        if self.write_general_notes.get() else "Uit"))
+                                                        if self.write_general_notes.get() else "Uit"),
+                                     star_format=("sterren" if "sterren" in self.star_format.get()
+                                                  else "cijfer"))
                 stem    = Path(ale_p).stem
                 out_dir = Path(_out_dir) if _out_dir else Path(ale_p).parent
                 out     = out_dir / f"{stem}{_out_suffix}.ALE"
