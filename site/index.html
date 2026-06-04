@@ -1144,7 +1144,7 @@
     </a>
     <div class="nav-right">
       <span class="nav-price">🎉 Introductieprijs: <s style="opacity:0.45;text-decoration-color:var(--muted)">€ 14,99</s> € 4,99 / jaar</span>
-      <a style="font-size:13px;color:var(--muted);text-decoration:none;" href="feedback">💬 Feedback</a>
+      <a style="font-size:13px;color:var(--muted);text-decoration:none;" href="feedback">🐛 Meld een bug of verzoek</a>
       <a class="btn-nav" href="download.html?platform=silicon">
         Download
       </a>
@@ -1442,7 +1442,7 @@
     <div class="contact-inner">
       <div class="section-eyebrow" style="justify-content:center">Contact</div>
       <h2 class="contact-title">Een vraag of opmerking?</h2>
-      <p class="contact-sub">Stuur een bericht en ik kom zo snel mogelijk bij je terug.</p>
+      <p class="contact-sub">Voor algemene vragen kun je hier een bericht sturen. Heb je een bug gevonden of een verzoek? Gebruik dan het formulier hieronder.</p>
       <form class="contact-form" action="https://formspree.io/f/xaqklekb" method="POST">
         <div class="form-row">
           <div class="form-group">
@@ -1456,10 +1456,17 @@
         </div>
         <div class="form-group">
           <label for="message">Bericht</label>
-          <textarea id="message" name="message" rows="5" placeholder="Je vraag, feedback of bug report..." required></textarea>
+          <textarea id="message" name="message" rows="5" placeholder="Je vraag of opmerking…" required></textarea>
         </div>
         <button type="submit" class="btn-submit">Verstuur bericht</button>
       </form>
+
+      <div style="margin-top:32px;padding-top:32px;border-top:1px solid var(--border);text-align:center;">
+        <p style="color:var(--muted);font-size:14px;margin-bottom:16px;">Iets gevonden dat niet werkt, of een idee voor een nieuwe functie?</p>
+        <a href="feedback" style="display:inline-flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border2);color:var(--accent2);font-family:var(--body);font-weight:600;font-size:14px;padding:12px 24px;border-radius:8px;text-decoration:none;transition:all 0.2s;" onmouseover="this.style.background='rgba(155,64,255,0.15)'" onmouseout="this.style.background='var(--surface2)'">
+          🐛 Meld een bug of verzoek
+        </a>
+      </div>
     </div>
   </section>
 
