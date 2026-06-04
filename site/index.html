@@ -123,6 +123,15 @@
 
     .btn-nav:hover { background: var(--accent2); }
 
+    .nav-feedback {
+      font-size: 13px;
+      color: var(--muted);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .nav-feedback:hover { color: var(--text); }
+    .show-mobile { display: none; }
+
     /* ── HERO ── */
     .hero {
       position: relative;
@@ -1131,6 +1140,8 @@
       .pricing-section { padding: 80px 24px; }
       .pricing-features { grid-template-columns: 1fr; }
       nav { padding: 0 24px; }
+      .hide-mobile { display: none !important; }
+      .show-mobile { display: inline !important; }
     }
   </style>
 </head>
@@ -1143,8 +1154,11 @@
       <span class="nav-logo-text">Continuity Bridge</span>
     </a>
     <div class="nav-right">
-      <span class="nav-price">🎉 Introductieprijs: <s style="opacity:0.45;text-decoration-color:var(--muted)">€ 14,99</s> € 4,99 / jaar</span>
-      <a style="font-size:13px;color:var(--muted);text-decoration:none;" href="feedback">🐛 Meld een bug of verzoek</a>
+      <span class="nav-price hide-mobile">🎉 Introductieprijs: <s style="opacity:0.45;text-decoration-color:var(--muted)">€ 14,99</s> € 4,99 / jaar</span>
+      <a class="nav-feedback" href="feedback">
+        <span class="hide-mobile">🐛 Bug of verzoek</span>
+        <span class="show-mobile" aria-label="Meld een bug of verzoek">🐛</span>
+      </a>
       <a class="btn-nav" id="btn-nav-download" href="download.html?platform=silicon">
         Download
       </a>
