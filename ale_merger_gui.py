@@ -391,6 +391,7 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                         if ri == 0: continue          # header
                         if not row_data or not row_data[0]: continue
                         take_str = (row_data[0] or "").strip()
+                        take_str = ''.join(c for c in take_str if ord(c) < 128)
                         if not re.match(r'^\d+$', take_str): continue
 
                         clip_raw = re.sub(r'\s+', '', row_data[2] or "")
@@ -525,6 +526,7 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                         for row in ext[1:]:
                             if not row: continue
                             take_str = str(row[take_i] or "").strip() if take_i < len(row) else ""
+                            take_str = ''.join(c for c in take_str if ord(c) < 128)
                             clip_str = str(row[clip_i] or "").strip() if clip_i < len(row) else ""
                             if not take_str or not clip_str: continue
                             if not re.match(r'^\d+$', take_str): continue
@@ -611,6 +613,7 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                         for ri, row in enumerate(tbl.rows[1:], 1):
                             if ri >= len(ext): break
                             take_str = str(ext[ri][0] or "").strip()
+                            take_str = ''.join(c for c in take_str if ord(c) < 128)
                             if not re.match(r'^\d+$', take_str): continue
 
                             note = str(ext[ri][notes_i] or "").replace("\n", " ").strip() if notes_i < len(ext[ri]) else ""
@@ -1168,7 +1171,8 @@ def _patch_nsmenuitem_for_macos15plus():
 
         def _patched(self_, cmd, title, action, key):
             try:
-                if title and _get_len(title) == 0:
+                # NSString nil pointer check via objc_msgSend
+                if not title or _get_len(title) == 0:
                     title = _space
             except Exception:
                 title = _space
@@ -3338,10 +3342,15 @@ class App:
 
                 cv.registerForDraggedTypes_(["NSFilenamesPboardType"])
 
-            except Exception:
-                pass   # DnD werkt niet — geen crash
+            except Exception as _e:
+                # DnD via ObjC faalt — fallback: upload button blijft werkend
+                app_ref._log_direct(f"Drag-drop niet beschikbaar (fallback: upload knop gebruiken)", "warn")
 
-        attach()
+        try:
+            attach()
+        except Exception:
+            # Nog een extra vangnet
+            pass
 
     def _ui(self):
         # ── Header (gradient canvas) ─────────────────────────────────────────
