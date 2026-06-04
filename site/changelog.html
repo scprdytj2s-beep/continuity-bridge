@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wat is er nieuw — Continuity Bridge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,700&family=Figtree:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0C0618;
+      --surface:  #130825;
+      --surface2: #1A0E35;
+      --border:   #2C1A58;
+      --border2:  #3D2278;
+      --text:     #EDE8FF;
+      --muted:    #8070B8;
+      --dim:      #4A3280;
+      --accent:   #9B40FF;
+      --accent2:  #C084FC;
+      --violet:   #7B28DF;
+      --success:  #4ED98A;
+      --warning:  #F59E0B;
+      --display:  'Fraunces', serif;
+      --body:     'Figtree', sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      font-weight: 400;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 70% -10%, rgba(155,64,255,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 40% at -10% 60%, rgba(123,40,223,0.09) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 30% at 50% 100%, rgba(78,217,138,0.04) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(6,10,20,0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding: 0 52px;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      text-decoration: none;
+    }
+
+    .nav-logo img { width: 32px; height: 32px; border-radius: 7px; }
+
+    .nav-logo-text {
+      font-family: var(--body);
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .btn-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--accent);
+      color: #fff;
+      font-family: var(--body);
+      font-weight: 600;
+      font-size: 13px;
+      padding: 8px 18px;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .btn-nav:hover { background: var(--accent2); }
+
+    /* ── Page ── */
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 80px 24px 120px;
+    }
+
+    .page-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent2);
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-family: 'Fraunces', serif;
+      font-weight: 900;
+      font-size: clamp(32px, 4vw, 48px);
+      line-height: 1.06;
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.6;
+      margin-bottom: 64px;
+    }
+
+    /* ── Timeline ── */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .release {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 0 32px;
+      position: relative;
+    }
+
+    .release + .release {
+      margin-top: 48px;
+    }
+
+    /* Vertical line */
+    .release-meta {
+      padding-top: 4px;
+      text-align: right;
+      position: relative;
+    }
+
+    .release-meta::after {
+      content: '';
+      position: absolute;
+      right: -20px;
+      top: 10px;
+      bottom: -58px;
+      width: 1px;
+      background: var(--border);
+    }
+
+    .release:last-child .release-meta::after { display: none; }
+
+    .release-dot {
+      position: absolute;
+      right: -24px;
+      top: 6px;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--border2);
+      border: 1px solid var(--dim);
+    }
+
+    .release.latest .release-dot {
+      background: var(--success);
+      border-color: var(--success);
+      box-shadow: 0 0 8px rgba(78,217,138,0.5);
+    }
+
+    .release-version {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.02em;
+    }
+
+    .release-date {
+      font-size: 12px;
+      color: var(--dim);
+      margin-top: 3px;
+    }
+
+    .release-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 4px;
+      margin-top: 6px;
+    }
+
+    .badge-latest {
+      background: rgba(78,217,138,0.15);
+      color: var(--success);
+    }
+
+    .badge-beta {
+      background: rgba(155,64,255,0.15);
+      color: var(--accent2);
+    }
+
+    /* ── Release body ── */
+    .release-body {
+      padding-bottom: 8px;
+    }
+
+    .release-title {
+      font-family: 'Fraunces', serif;
+      font-weight: 700;
+      font-size: 20px;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+
+    .change-group {
+      margin-bottom: 16px;
+    }
+
+    .change-group-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .label-fix      { color: #FF8080; }
+    .label-new      { color: var(--success); }
+    .label-improve  { color: var(--accent2); }
+
+    .change-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .change-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .change-list li::before {
+      content: '–';
+      color: var(--dim);
+      flex-shrink: 0;
+      margin-top: 0px;
+    }
+
+    .change-list li strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .release-note {
+      font-size: 13px;
+      color: var(--dim);
+      font-style: italic;
+      margin-top: 4px;
+    }
+
+    @media (max-width: 600px) {
+      nav { padding: 0 20px; }
+      .page { padding: 48px 16px 80px; }
+      .release { grid-template-columns: 1fr; }
+      .release-meta { text-align: left; padding-bottom: 12px; }
+      .release-meta::after { display: none; }
+      .release-dot { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="nav-logo" href="/cbapp/">
+      <img src="/cbapp/logo.png" alt="Continuity Bridge" />
+      <span class="nav-logo-text">Continuity Bridge</span>
+    </a>
+    <div>
+      <a class="btn-nav" href="/cbapp/download.html">Download</a>
+    </div>
+  </nav>
+
+  <div class="page">
+    <div class="page-tag">Versiegeschiedenis</div>
+    <h1>Wat is er nieuw?</h1>
+    <p class="subtitle">Alle updates van Continuity Bridge, van nieuw naar oud.</p>
+
+    <div class="timeline">
+
+      <!-- v1.3.2 -->
+      <div class="release latest">
+        <div class="release-meta">
+          <div class="release-version">v1.3.2</div>
+          <div class="release-date">4 juni 2026</div>
+          <span class="release-badge badge-latest">Nieuwste</span>
+          <div class="release-dot"></div>
+        </div>
+        <div class="release-body">
+          <div class="release-title">Stabiliteitsfixes</div>
+          <div class="change-group">
+            <div class="change-group-label label-fix">Bugfixes</div>
+            <ul class="change-list">
+              <li>SSL-certificaatfout bij update-check op <strong>Intel Macs</strong> opgelost</li>
+              <li>Rapporten in <strong>TDDOS- en D&N-formaat</strong> worden nu correct herkend</li>
+              <li>Kolomnamen zijn niet meer hoofdlettergevoelig — <strong>Notes</strong> en <strong>notes</strong> worden nu als hetzelfde herkend</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- v1.3.1 -->
+      <div class="release">
+        <div class="release-meta">
+          <div class="release-version">v1.3.1</div>
+          <div class="release-date">4 juni 2026</div>
+          <span class="release-badge badge-beta">Beta</span>
+          <div class="release-dot"></div>
+        </div>
+        <div class="release-body">
+          <div class="release-title">Hotfix</div>
+          <div class="change-group">
+            <div class="change-group-label label-fix">Bugfixes</div>
+            <ul class="change-list">
+              <li>Crashfix bij opstarten op <strong>macOS 26</strong></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- v1.3 -->
+      <div class="release">
+        <div class="release-meta">
+          <div class="release-version">v1.3</div>
+          <div class="release-date">29 mei 2026</div>
+          <span class="release-badge badge-beta">Beta</span>
+          <div class="release-dot"></div>
+        </div>
+        <div class="release-body">
+          <div class="release-title">FAQ, layout mapper & macOS 26</div>
+          <div class="change-group">
+            <div class="change-group-label label-new">Nieuw</div>
+            <ul class="change-list">
+              <li><strong>FAQ in de app</strong> — Help → FAQ opent een venster met veelgestelde vragen</li>
+              <li><strong>Layout mapper</strong> — onbekend PDF-formaat? Wijs zelf kolommen toe en sla de indeling lokaal op</li>
+              <li><strong>Uitleg Apple-beveiliging</strong> — stap-voor-stap screenshots in de FAQ voor de macOS-beveiligingswaarschuwing</li>
+            </ul>
+          </div>
+          <div class="change-group">
+            <div class="change-group-label label-fix">Bugfixes</div>
+            <ul class="change-list">
+              <li>Crash op <strong>macOS 26</strong> opgelost (NSAssertionHandler + NSString retain-fix)</li>
+              <li>Drag & Drop werkt nu correct in de gebouwde app (pyobjc gebundeld)</li>
+              <li>Interne formaataanduiding verwijderd uit zichtbaar gebruikerslog</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- v1.2.1 -->
+      <div class="release">
+        <div class="release-meta">
+          <div class="release-version">v1.2.1</div>
+          <div class="release-date">27 mei 2026</div>
+          <span class="release-badge badge-beta">Beta</span>
+          <div class="release-dot"></div>
+        </div>
+        <div class="release-body">
+          <div class="release-title">In-app updater & activatiecheck</div>
+          <div class="change-group">
+            <div class="change-group-label label-new">Nieuw</div>
+            <ul class="change-list">
+              <li><strong>In-app updater</strong> — update direct vanuit de app, inclusief voortgangsbalk en automatisch herstarten</li>
+              <li><strong>Server-side activatiecheck</strong> — een serial kan niet meer op meerdere machines tegelijk worden gebruikt</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- v1.2 -->
+      <div class="release">
+        <div class="release-meta">
+          <div class="release-version">v1.2</div>
+          <div class="release-date">27 mei 2026</div>
+          <span class="release-badge badge-beta">Beta</span>
+          <div class="release-dot"></div>
+        </div>
+        <div class="release-body">
+          <div class="release-title">Automatische licentielevering</div>
+          <div class="change-group">
+            <div class="change-group-label label-new">Nieuw</div>
+            <ul class="change-list">
+              <li><strong>Automatische licentielevering via Mollie</strong> — serial direct per e-mail na betaling</li>
+            </ul>
+          </div>
+          <div class="change-group">
+            <div class="change-group-label label-fix">Bugfixes</div>
+            <ul class="change-list">
+              <li>Kolom-dropdown sluit nu correct wanneer je een bestand sleept</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- v1.1 -->
+      <div class="release">
+        <div class="release-meta">
+          <div class="release-version">v1.1</div>
+          <div class="release-date">26 mei 2026</div>
+          <span class="release-badge badge-beta">Beta</span>
+          <div class="release-dot"></div>
+        </div>
+        <div class="release-body">
+          <div class="release-title">Multi-bestand & verbeterde stabiliteit</div>
+          <div class="change-group">
+            <div class="change-group-label label-new">Nieuw</div>
+            <ul class="change-list">
+              <li><strong>Meerdere bestanden tegelijk</strong> uploaden via drag & drop</li>
+              <li>Algemeen commentaar per slate nu ook invoerbaar</li>
+            </ul>
+          </div>
+          <div class="change-group">
+            <div class="change-group-label label-improve">Verbeteringen</div>
+            <ul class="change-list">
+              <li>Drag & drop verbeterd en stabieler</li>
+              <li>Update-check robuuster (timeout 10s, betere foutafhandeling)</li>
+            </ul>
+          </div>
+          <div class="change-group">
+            <div class="change-group-label label-fix">Bugfixes</div>
+            <ul class="change-list">
+              <li>Laatste take ontving geen algemene opmerking (page_note) — opgelost</li>
+              <li>Sound Notes en Camera Notes naar dezelfde kolom worden nu samengevoegd met <strong>/</strong> i.p.v. overschreven</li>
+              <li>Tijdcode-noten in rapport verstoren de rating niet meer</li>
+              <li>Foutmelding bij geen internet is vriendelijker en verstoort opstarten niet meer</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- v1.0 -->
+      <div class="release">
+        <div class="release-meta">
+          <div class="release-version">v1.0</div>
+          <div class="release-date">25 mei 2026</div>
+          <div class="release-dot"></div>
+        </div>
+        <div class="release-body">
+          <div class="release-title">Eerste release</div>
+          <p class="release-note">De eerste publieke versie van Continuity Bridge.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</body>
+</html>

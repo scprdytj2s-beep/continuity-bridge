@@ -4,6 +4,8 @@
   "rewrites": [
     { "source": "/cbapp/feedback", "destination": "/site/feedback.html" },
     { "source": "/cbapp/feedback.html", "destination": "/site/feedback.html" },
+    { "source": "/cbapp/changelog", "destination": "/site/changelog.html" },
+    { "source": "/cbapp/changelog.html", "destination": "/site/changelog.html" },
     { "source": "/cbapp/download", "destination": "/site/download.html" },
     { "source": "/cbapp/download.html", "destination": "/site/download.html" },
     { "source": "/cbapp/success.html", "destination": "/site/success.html" },
