@@ -429,6 +429,7 @@
         <p class="found-label">Beschikbaar</p>
         <h1 class="found-title" id="found-title">Download start zo.</h1>
         <p class="found-sub" id="found-sub"></p>
+        <p class="found-version" id="found-version" style="font-size:12px;color:var(--muted,#8070B8);margin-top:6px;"></p>
         <div class="countdown-ring-wrap">
           <svg class="countdown-svg" viewBox="0 0 48 48">
             <circle class="countdown-track" cx="24" cy="24" r="20"/>
@@ -483,11 +484,14 @@
       document.body.className = 's-' + name;
     }
 
-    function showFound(url) {
+    function showFound(url, version) {
       setIcon('✓');
       document.getElementById('found-title').textContent = 'Download start zo.';
       document.getElementById('found-sub').textContent =
         `${info.label}-versie gevonden. Je download begint automatisch.`;
+      if (version) {
+        document.getElementById('found-version').textContent = `Versie ${version}`;
+      }
       showState('found');
 
       // Countdown 3 → 0
@@ -544,7 +548,7 @@
         const data = await res.json();
         const asset = (data.assets || []).find(a => a.name === info.name);
         if (asset) {
-          showFound(asset.browser_download_url);
+          showFound(asset.browser_download_url, data.tag_name);
         } else {
           showUnavailable();
         }
