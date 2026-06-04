@@ -1,0 +1,9 @@
+{
+  "name": "studiomichielboesveldt-landing",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@mollie/api-client": "^3.7.0",
+    "resend": "^4.0.0"
+  }
+}
