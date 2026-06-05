@@ -118,7 +118,7 @@ async function sendEmail({ email, name, type, description, version, platform, is
     body: JSON.stringify({
       from: FROM,
       to:   email,
-      cc:   ADMIN,
+      bcc:  ADMIN,
       subject: `${typeEmoji} Ontvangen: jouw ${typeLabel} voor Continuity Bridge`,
       html: `
         <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
