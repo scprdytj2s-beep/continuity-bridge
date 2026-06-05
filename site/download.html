@@ -421,12 +421,12 @@
 
       <!-- Loading -->
       <div class="state-block active" id="block-loading">
-        <p class="loading-text">Controleren…</p>
+        <p class="loading-text" id="loading-text">Controleren…</p>
       </div>
 
       <!-- Found -->
       <div class="state-block" id="block-found">
-        <p class="found-label">Beschikbaar</p>
+        <p class="found-label" id="found-label">Beschikbaar</p>
         <h1 class="found-title" id="found-title">Download start zo.</h1>
         <p class="found-sub" id="found-sub"></p>
         <p class="found-version" id="found-version" style="font-size:12px;color:var(--muted,#8070B8);margin-top:6px;"></p>
@@ -441,15 +441,15 @@
 
       <!-- Unavailable -->
       <div class="state-block" id="block-unavail">
-        <p class="unavail-eyebrow">Komt eraan</p>
+        <p class="unavail-eyebrow" id="unavail-eyebrow">Komt eraan</p>
         <h1 class="unavail-title" id="unavail-title">Snel<br><em>beschikbaar.</em></h1>
         <p class="unavail-sub" id="unavail-sub">Deze versie wordt op dit moment klaargezet. Kom straks terug — of download een andere versie.</p>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:16px;">
-          <a class="btn-silicon" id="silicon-alt" href="download.html?platform=silicon" style="display:none;">
+          <a class="btn-silicon" id="silicon-alt" href="download.html?platform=silicon" style="display:none;" id="silicon-alt-btn">
             🍎 Download Apple Silicon
           </a>
         </div>
-        <a class="btn-back" href="/cbapp/">← Terug naar Continuity Bridge</a>
+        <a class="btn-back" href="/cbapp/" id="btn-back">← Terug naar Continuity Bridge</a>
       </div>
 
     </div>
@@ -486,11 +486,11 @@
 
     function showFound(url, version) {
       setIcon('✓');
-      document.getElementById('found-title').textContent = 'Download start zo.';
-      document.getElementById('found-sub').textContent =
-        `${info.label}-versie gevonden. Je download begint automatisch.`;
+        const t = DL_T[dlLang()];
+      document.getElementById('found-title').textContent = t.found_title;
+      document.getElementById('found-sub').textContent = t.found_sub.replace('{platform}', info.label);
       if (version) {
-        document.getElementById('found-version').textContent = `Versie ${version}`;
+        document.getElementById('found-version').textContent = t.version.replace('{v}', version);
       }
       showState('found');
 
@@ -516,19 +516,9 @@
     function showUnavailable() {
       setIcon('◌');
 
-      const titles = {
-        intel:   'Snel<br><em>beschikbaar.</em>',
-        silicon: 'Snel<br><em>beschikbaar.</em>',
-        windows: 'Snel<br><em>beschikbaar.</em>',
-      };
-      const subs = {
-        intel:   'De Intel-versie wordt op dit moment klaargezet op onze server. Kom straks terug, of download alvast de Silicon-versie.',
-        silicon: 'De Silicon-versie wordt op dit moment klaargezet op onze server. Probeer het straks opnieuw.',
-        windows: 'De Windows-versie wordt op dit moment klaargezet op onze server. Probeer het straks opnieuw.',
-      };
-
-      document.getElementById('unavail-title').innerHTML = titles[platform] || titles.silicon;
-      document.getElementById('unavail-sub').textContent = subs[platform] || subs.silicon;
+      const t = DL_T[dlLang()];
+      document.getElementById('unavail-title').innerHTML = t.unavail_title;
+      document.getElementById('unavail-sub').textContent = t.unavail_subs[platform] || t.unavail_subs.silicon;
 
       // Intel unavailable → toon Silicon-knop als alternatief
       if (platform === 'intel') {
@@ -558,6 +548,74 @@
         showUnavailable();
       }
     }
+
+    // ── i18n ────────────────────────────────────────────────────────────────
+    const DL_T = {
+      nl: {
+        loading:      'Controleren…',
+        found_label:  'Beschikbaar',
+        found_title:  'Download start zo.',
+        found_sub:    '{platform}-versie gevonden. Je download begint automatisch.',
+        version:      'Versie {v}',
+        unavail_eyebrow: 'Komt eraan',
+        unavail_title:   'Snel<br><em>beschikbaar.</em>',
+        unavail_subs: {
+          intel:   'De Intel-versie wordt op dit moment klaargezet. Kom straks terug, of download alvast de Silicon-versie.',
+          silicon: 'De Silicon-versie wordt op dit moment klaargezet. Probeer het straks opnieuw.',
+          windows: 'De Windows-versie wordt op dit moment klaargezet. Probeer het straks opnieuw.',
+        },
+        silicon_alt: '🍎 Download Apple Silicon',
+        btn_back:    '← Terug naar Continuity Bridge',
+      },
+      en: {
+        loading:      'Checking…',
+        found_label:  'Available',
+        found_title:  'Download starting.',
+        found_sub:    '{platform} version found. Your download will start automatically.',
+        version:      'Version {v}',
+        unavail_eyebrow: 'Coming soon',
+        unavail_title:   'Available<br><em>shortly.</em>',
+        unavail_subs: {
+          intel:   'The Intel version is currently being prepared. Try again later, or download the Silicon version in the meantime.',
+          silicon: 'The Silicon version is currently being prepared. Please try again shortly.',
+          windows: 'The Windows version is currently being prepared. Please try again shortly.',
+        },
+        silicon_alt: '🍎 Download Apple Silicon',
+        btn_back:    '← Back to Continuity Bridge',
+      },
+      de: {
+        loading:      'Wird geprüft…',
+        found_label:  'Verfügbar',
+        found_title:  'Download startet gleich.',
+        found_sub:    '{platform}-Version gefunden. Dein Download startet automatisch.',
+        version:      'Version {v}',
+        unavail_eyebrow: 'Kommt bald',
+        unavail_title:   'Bald<br><em>verfügbar.</em>',
+        unavail_subs: {
+          intel:   'Die Intel-Version wird gerade vorbereitet. Komm später wieder oder lade die Silicon-Version herunter.',
+          silicon: 'Die Silicon-Version wird gerade vorbereitet. Bitte versuche es später nochmal.',
+          windows: 'Die Windows-Version wird gerade vorbereitet. Bitte versuche es später nochmal.',
+        },
+        silicon_alt: '🍎 Apple Silicon herunterladen',
+        btn_back:    '← Zurück zu Continuity Bridge',
+      },
+    };
+
+    function dlLang() {
+      const s = localStorage.getItem('cb_lang');
+      return (s && DL_T[s]) ? s : ((DL_T[navigator.language?.slice(0,2)]) ? navigator.language.slice(0,2) : 'nl');
+    }
+
+    // Apply static translations immediately
+    (function() {
+      const t = DL_T[dlLang()];
+      document.getElementById('loading-text').textContent  = t.loading;
+      document.getElementById('found-label').textContent   = t.found_label;
+      document.getElementById('found-title').textContent   = t.found_title;
+      document.getElementById('unavail-eyebrow').textContent = t.unavail_eyebrow;
+      document.getElementById('btn-back').textContent      = t.btn_back;
+      document.getElementById('silicon-alt').textContent   = t.silicon_alt;
+    })();
 
     // Small delay so loading state is visible
     setTimeout(check, 600);
