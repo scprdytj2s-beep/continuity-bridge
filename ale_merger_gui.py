@@ -2444,12 +2444,12 @@ class App:
                         import platform as _plat, sys as _sys2
                         assets = data.get("assets", [])
                         if _sys2.platform == 'win32':
-                            want = 'ContinuityBridge.exe'
+                            want = '.exe'
                         elif _plat.machine() == 'arm64':
-                            want = 'ContinuityBridge-Silicon.dmg'
+                            want = 'Silicon'
                         else:
-                            want = 'ContinuityBridge-Intel.dmg'
-                        asset = next((a for a in assets if a['name'] == want), None)
+                            want = 'Intel'
+                        asset = next((a for a in assets if want in a['name']), None)
                         dl_url = asset['browser_download_url'] if asset else None
                         self.root.after(0, lambda lv=latest, url=dl_url:
                                         _show_update_dialog(lv, url))
