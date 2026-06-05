@@ -30,12 +30,13 @@ jobs:
           pyinstaller -y --clean continuity_bridge_win.spec
           mv "dist/ContinuityBridge.exe" "dist/ContinuityBridge-${VERSION}.exe"
           echo "EXEFILE=dist/ContinuityBridge-${VERSION}.exe" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
         shell: bash
 
       - name: Upload naar GitHub Release
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
         with:
+          tag_name: v${{ env.VERSION }}
           files: ${{ env.EXEFILE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
