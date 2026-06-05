@@ -1,7 +1,7 @@
 const TRANSLATIONS = {
   nl: {
     nav_price:            '🎉 Introductieprijs: <s style="opacity:.45;text-decoration-color:var(--muted)">€ 14,99</s> € 4,99 / jaar',
-    nav_feedback:         '🐛 Bug of verzoek',
+    nav_feedback:         'Support',
     nav_feedback_label:   'Meld een bug of verzoek',
     nav_download:         'Download',
 
@@ -128,7 +128,7 @@ const TRANSLATIONS = {
 
   en: {
     nav_price:            '🎉 Intro price: <s style="opacity:.45;text-decoration-color:var(--muted)">€ 14.99</s> € 4.99 / year',
-    nav_feedback:         '🐛 Bug or request',
+    nav_feedback:         'Support',
     nav_feedback_label:   'Report a bug or request',
     nav_download:         'Download',
 
@@ -255,7 +255,7 @@ const TRANSLATIONS = {
 
   de: {
     nav_price:            '🎉 Einführungspreis: <s style="opacity:.45;text-decoration-color:var(--muted)">€ 14,99</s> € 4,99 / Jahr',
-    nav_feedback:         '🐛 Bug oder Anfrage',
+    nav_feedback:         'Support',
     nav_feedback_label:   'Bug oder Anfrage melden',
     nav_download:         'Download',
 
