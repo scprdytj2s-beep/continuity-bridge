@@ -438,14 +438,7 @@
         <div class="field">
           <label data-i18n="fb_version">Versie</label>
           <select id="version">
-            <option value="v1.3.4" data-i18n-opt="version_current">v1.3.4 (huidig)</option>
-            <option value="v1.3.3">v1.3.3</option>
-            <option value="v1.3.2">v1.3.2</option>
-            <option value="v1.3.1">v1.3.1</option>
-            <option value="v1.3">v1.3</option>
-            <option value="v1.2.1">v1.2.1</option>
-            <option value="v1.2">v1.2</option>
-            <option value="onbekend" data-i18n-opt="version_unknown">Weet ik niet</option>
+            <option value="laden">Laden…</option>
           </select>
         </div>
 
@@ -773,6 +766,31 @@
       }
     }
 
+    // ── Versies dynamisch laden van GitHub ──────────────────────────────────
+    async function loadVersions() {
+      const sel = document.getElementById('version');
+      try {
+        const res = await fetch('https://api.github.com/repos/scprdytj2s-beep/continuity-bridge/releases?per_page=20',
+          { headers: { Accept: 'application/vnd.github+json' } });
+        const releases = await res.json();
+        const t = FB_T[fbGetLang()] || FB_T.nl;
+        sel.innerHTML = '';
+        releases.forEach((r, i) => {
+          const opt = document.createElement('option');
+          opt.value = r.tag_name;
+          opt.textContent = i === 0 ? `${r.tag_name} (${t.version_current||'huidig'})` : r.tag_name;
+          sel.appendChild(opt);
+        });
+        const unknown = document.createElement('option');
+        unknown.value = 'onbekend';
+        unknown.textContent = t.version_unknown || 'Weet ik niet';
+        sel.appendChild(unknown);
+      } catch {
+        // fallback
+        sel.innerHTML = `<option value="huidig">Huidige versie</option><option value="onbekend">Weet ik niet</option>`;
+      }
+    }
+
     loadIssues();
   </script>
 
@@ -785,7 +803,7 @@
       fb_type:'Type', fb_bug:'🐛 Bug', fb_request:'💡 Verzoek',
       fb_name:'Naam', fb_name_ph:'Jouw naam',
       fb_email:'E-mailadres',
-      fb_version:'Versie', version_current:'v1.3.4 (huidig)', version_unknown:'Weet ik niet',
+      fb_version:'Versie', version_current:'huidig', version_unknown:'Weet ik niet',
       fb_platform:'Platform',
       fb_os:'macOS / Windows versie', fb_os_ph:'Bijv. macOS 15.4 of Windows 11',
       fb_desc:'Beschrijving',
@@ -808,7 +826,7 @@
       fb_type:'Type', fb_bug:'🐛 Bug', fb_request:'💡 Request',
       fb_name:'Name', fb_name_ph:'Your name',
       fb_email:'Email address',
-      fb_version:'Version', version_current:'v1.3.4 (current)', version_unknown:'I don\'t know',
+      fb_version:'Version', version_current:'current', version_unknown:'I don\'t know',
       fb_platform:'Platform',
       fb_os:'macOS / Windows version', fb_os_ph:'E.g. macOS 15.4 or Windows 11',
       fb_desc:'Description',
@@ -831,7 +849,7 @@
       fb_type:'Typ', fb_bug:'🐛 Bug', fb_request:'💡 Anfrage',
       fb_name:'Name', fb_name_ph:'Dein Name',
       fb_email:'E-Mail-Adresse',
-      fb_version:'Version', version_current:'v1.3.4 (aktuell)', version_unknown:'Weiß ich nicht',
+      fb_version:'Version', version_current:'aktuell', version_unknown:'Weiß ich nicht',
       fb_platform:'Plattform',
       fb_os:'macOS / Windows Version', fb_os_ph:'Z.B. macOS 15.4 oder Windows 11',
       fb_desc:'Beschreibung',
@@ -917,6 +935,7 @@
   const _initLang = fbGetLang();
   document.getElementById('langFlag').textContent = FB_FLAGS[_initLang] || '🇳🇱';
   fbSetLang(_initLang);
+  loadVersions();
   </script>
 
 </body>
