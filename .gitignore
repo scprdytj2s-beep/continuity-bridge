@@ -1,0 +1,8 @@
+build/
+dist/
+*.dmg
+*.exe
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
