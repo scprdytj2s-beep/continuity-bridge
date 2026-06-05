@@ -152,7 +152,7 @@ async function sendAdminNotification({ type, name, email, version, platform, des
     },
     body: JSON.stringify({
       from: FROM,
-      to:   'support@studiomichielboesveldt.nl',
+      to:   'info@studiomichielboesveldt.nl',
       subject: `${typeEmoji} ${type}: ${description.slice(0, 50)}${description.length > 50 ? '…' : ''}`,
       html: `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a">
