@@ -1622,10 +1622,18 @@
   <footer>
     <p><span data-i18n="footer">© 2026 Studio Michiel Boesveldt · Continuity Bridge</span></p>
     <a href="mailto:support@studiomichielboesveldt.nl">support@studiomichielboesveldt.nl</a>
-    <div class="lang-switcher" style="margin-top:16px;justify-content:center;">
-      <button class="lang-btn" data-lang="nl">🇳🇱 NL</button>
-      <button class="lang-btn" data-lang="en">🇬🇧 EN</button>
-      <button class="lang-btn" data-lang="de">🇩🇪 DE</button>
+    <div style="margin-top:16px;display:flex;justify-content:center;">
+      <div class="lang-dropdown" id="langDropdownFooter" style="position:relative;">
+        <button class="lang-trigger" onclick="toggleLangMenuFooter()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:18px;padding:5px 9px;cursor:pointer;display:flex;align-items:center;gap:4px;line-height:1;">
+          <span id="langFlagFooter">🇳🇱</span>
+          <span style="font-size:9px;color:var(--dim);margin-top:1px;">▾</span>
+        </button>
+        <div id="langMenuFooter" style="display:none;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:6px;min-width:130px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,0.4);">
+          <button class="footer-lang-opt" data-lang="nl" onclick="selectLangFooter('nl')" style="display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;border-radius:6px;color:var(--muted);font-family:var(--body);font-size:13px;font-weight:500;padding:8px 10px;cursor:pointer;"><span style="font-size:18px">🇳🇱</span> Nederlands</button>
+          <button class="footer-lang-opt" data-lang="en" onclick="selectLangFooter('en')" style="display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;border-radius:6px;color:var(--muted);font-family:var(--body);font-size:13px;font-weight:500;padding:8px 10px;cursor:pointer;"><span style="font-size:18px">🇬🇧</span> English</button>
+          <button class="footer-lang-opt" data-lang="de" onclick="selectLangFooter('de')" style="display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;border-radius:6px;color:var(--muted);font-family:var(--body);font-size:13px;font-weight:500;padding:8px 10px;cursor:pointer;"><span style="font-size:18px">🇩🇪</span> Deutsch</button>
+        </div>
+      </div>
     </div>
   </footer>
 
@@ -1634,31 +1642,52 @@
 // ── Language dropdown ────────────────────────────────────────────────────────
 const FLAGS = { nl: '🇳🇱', en: '🇬🇧', de: '🇩🇪' };
 
+function syncLangUI(lang) {
+  const flag = FLAGS[lang] || '🇳🇱';
+  document.getElementById('langFlag').textContent = flag;
+  if (document.getElementById('langFlagFooter')) document.getElementById('langFlagFooter').textContent = flag;
+  document.querySelectorAll('.lang-option, .footer-lang-opt').forEach(o => {
+    const active = o.dataset.lang === lang;
+    o.style.color = active ? 'var(--text)' : 'var(--muted)';
+    o.style.fontWeight = active ? '600' : '500';
+  });
+}
+
 function toggleLangMenu() {
   document.getElementById('langDropdown').classList.toggle('open');
+  if (document.getElementById('langMenuFooter')) document.getElementById('langMenuFooter').style.display = 'none';
 }
 
 function selectLang(lang) {
   applyLang(lang);
-  document.getElementById('langFlag').textContent = FLAGS[lang] || '🇳🇱';
-  document.querySelectorAll('.lang-option').forEach(o => o.classList.toggle('active', o.dataset.lang === lang));
-  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
+  syncLangUI(lang);
   document.getElementById('langDropdown').classList.remove('open');
 }
 
-// Close dropdown on outside click
+function toggleLangMenuFooter() {
+  const m = document.getElementById('langMenuFooter');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+  document.getElementById('langDropdown').classList.remove('open');
+}
+
+function selectLangFooter(lang) {
+  applyLang(lang);
+  syncLangUI(lang);
+  document.getElementById('langMenuFooter').style.display = 'none';
+}
+
+// Close dropdowns on outside click
 document.addEventListener('click', e => {
-  if (!document.getElementById('langDropdown').contains(e.target)) {
+  if (!document.getElementById('langDropdown').contains(e.target))
     document.getElementById('langDropdown').classList.remove('open');
-  }
+  const footer = document.getElementById('langDropdownFooter');
+  if (footer && !footer.contains(e.target))
+    document.getElementById('langMenuFooter').style.display = 'none';
 });
 
 // Init on load
 document.addEventListener('DOMContentLoaded', () => {
-  const lang = getLang();
-  document.getElementById('langFlag').textContent = FLAGS[lang] || '🇳🇱';
-  document.querySelectorAll('.lang-option').forEach(o => o.classList.toggle('active', o.dataset.lang === lang));
-  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
+  syncLangUI(getLang());
 });
 
 // ── FAQ accordion
