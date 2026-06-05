@@ -2,7 +2,8 @@ const OWNER  = 'scprdytj2s-beep';
 const REPO   = 'continuity-bridge';
 const TOKEN  = process.env.GITHUB_TOKEN;
 const RESEND = process.env.RESEND_API_KEY;
-const FROM   = 'Continuity Bridge <support@studiomichielboesveldt.nl>';
+const FROM   = 'support@studiomichielboesveldt.nl <info@studiomichielboesveldt.nl>';
+const ADMIN  = 'info@studiomichielboesveldt.nl';
 
 const LABEL_MAP = { Bug: 'bug', Verzoek: 'enhancement' };
 
@@ -71,11 +72,8 @@ export default async function handler(req, res) {
     if (!r.ok) return res.status(500).json({ error: 'github error' });
     const issue = await r.json();
 
-    // Bevestigingsmail naar indiener
-    await sendConfirmation({ email, name, type, description, issueUrl: issue.html_url });
-
-    // Notificatie naar admin
-    await sendAdminNotification({ type, name, email, version, platform, description, issueUrl: issue.html_url });
+    // Email naar indiener + cc admin
+    await sendEmail({ email, name, type, description, version, platform, issueUrl: issue.html_url });
 
     return res.status(201).json({ url: issue.html_url });
   }
@@ -105,10 +103,12 @@ async function uploadFile(b64, filename, folder) {
   return data.content?.download_url || null;
 }
 
-async function sendConfirmation({ email, name, type, description, issueUrl }) {
+async function sendEmail({ email, name, type, description, version, platform, issueUrl }) {
   if (!RESEND) return;
   const voornaam = name && name !== 'Anoniem' ? name.split(' ')[0] : 'daar';
   const typeLabel = type === 'Bug' ? 'bugmelding' : 'verzoek';
+  const typeEmoji = type === 'Bug' ? '🐛' : '💡';
+  const platformInfo = platform ? `<p style="margin:0 0 8px"><strong>Platform:</strong> ${platform}</p>` : '';
   await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -118,7 +118,8 @@ async function sendConfirmation({ email, name, type, description, issueUrl }) {
     body: JSON.stringify({
       from: FROM,
       to:   email,
-      subject: `Ontvangen: jouw ${typeLabel} voor Continuity Bridge`,
+      cc:   ADMIN,
+      subject: `${typeEmoji} Ontvangen: jouw ${typeLabel} voor Continuity Bridge`,
       html: `
         <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
           <div style="background:#0C0618;padding:24px 32px;border-radius:12px 12px 0 0">
@@ -127,48 +128,16 @@ async function sendConfirmation({ email, name, type, description, issueUrl }) {
           <div style="border:1px solid #e5e5e5;border-top:none;padding:32px;border-radius:0 0 12px 12px">
             <p style="margin:0 0 16px">Hoi ${voornaam},</p>
             <p style="margin:0 0 16px">Je ${typeLabel} is goed ontvangen. Michiel pakt dit op bij de eerstvolgende versie.</p>
-            <div style="background:#f5f5f5;border-radius:8px;padding:16px;margin:20px 0;font-size:14px;color:#444">
-              <strong>Jouw melding:</strong><br/><br/>
-              ${description.replace(/\n/g, '<br/>')}
+            <div style="background:#f9f9f9;border-radius:8px;padding:16px;margin:20px 0;font-size:13px;color:#444;border-left:4px solid #9B40FF">
+              <p style="margin:0 0 8px"><strong>Versie:</strong> ${version || 'onbekend'}</p>
+              ${platformInfo}
+              <p style="margin:0"><strong>Jouw melding:</strong></p>
+              <div style="white-space:pre-wrap;margin-top:8px">${description.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
             </div>
             <p style="margin:0 0 8px;font-size:14px;color:#666">Bedankt voor je feedback!</p>
             <p style="margin:0;font-size:14px;color:#666">— Michiel</p>
-          </div>
-        </div>
-      `,
-    }),
-  });
-}
-
-async function sendAdminNotification({ type, name, email, version, platform, description, issueUrl }) {
-  if (!RESEND) return;
-  const typeEmoji = type === 'Bug' ? '🐛' : '💡';
-  const platformInfo = platform ? `<p><strong>Platform:</strong> ${platform}</p>` : '';
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${RESEND}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: FROM,
-      to:   'info@studiomichielboesveldt.nl',
-      subject: `${typeEmoji} ${type}: ${description.slice(0, 50)}${description.length > 50 ? '…' : ''}`,
-      html: `
-        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a">
-          <div style="background:#0C0618;padding:24px 32px;border-radius:12px 12px 0 0">
-            <span style="color:#EDE8FF;font-weight:700;font-size:16px">${typeEmoji} Nieuwe ${type.toLowerCase()} — Continuity Bridge</span>
-          </div>
-          <div style="border:1px solid #e5e5e5;border-top:none;padding:32px;border-radius:0 0 12px 12px">
-            <p><strong>Van:</strong> ${name || 'Anoniem'} (${email})</p>
-            <p><strong>Versie:</strong> ${version || 'onbekend'}</p>
-            ${platformInfo}
-            <hr style="margin:20px 0;border:none;border-top:1px solid #e5e5e5">
-            <div style="background:#f9f9f9;border-left:4px solid #9B40FF;padding:16px;margin:20px 0">
-              ${description.replace(/\n/g, '<br/>')}
-            </div>
-            <p style="margin-top:24px">
-              <a href="${issueUrl}" style="color:#9B40FF;text-decoration:none;font-weight:600">Bekijk op GitHub →</a>
+            <p style="margin-top:16px;font-size:12px;color:#999">
+              <a href="${issueUrl}" style="color:#9B40FF;text-decoration:none">Bekijk op GitHub</a>
             </p>
           </div>
         </div>
@@ -176,6 +145,7 @@ async function sendAdminNotification({ type, name, email, version, platform, des
     }),
   });
 }
+
 
 function labelType(labels) {
   const names = labels.map(l => l.name);
