@@ -391,10 +391,16 @@
       <span class="nav-logo-text">Continuity Bridge</span>
     </a>
     <div class="nav-right">
-      <div class="lang-switcher" style="display:flex;align-items:center;gap:2px;margin-right:8px;">
-        <button class="lang-btn active" data-lang="nl" onclick="fbSetLang('nl')">🇳🇱 NL</button>
-        <button class="lang-btn" data-lang="en" onclick="fbSetLang('en')">🇬🇧 EN</button>
-        <button class="lang-btn" data-lang="de" onclick="fbSetLang('de')">🇩🇪 DE</button>
+      <div class="lang-dropdown" id="langDropdown" style="position:relative;">
+        <button class="lang-trigger" id="langTrigger" onclick="toggleFbLangMenu()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:18px;padding:5px 9px;cursor:pointer;display:flex;align-items:center;gap:4px;line-height:1;transition:border-color .15s;">
+          <span id="langFlag">🇳🇱</span>
+          <span style="font-size:9px;color:var(--dim);margin-top:1px;">▾</span>
+        </button>
+        <div id="langMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:6px;min-width:130px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,0.4);">
+          <button class="fb-lang-opt active" data-lang="nl" onclick="fbSelectLang('nl')" style="display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;border-radius:6px;color:var(--muted);font-family:var(--body);font-size:13px;font-weight:500;padding:8px 10px;cursor:pointer;transition:all .1s;"><span style="font-size:18px">🇳🇱</span> Nederlands</button>
+          <button class="fb-lang-opt" data-lang="en" onclick="fbSelectLang('en')" style="display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;border-radius:6px;color:var(--muted);font-family:var(--body);font-size:13px;font-weight:500;padding:8px 10px;cursor:pointer;transition:all .1s;"><span style="font-size:18px">🇬🇧</span> English</button>
+          <button class="fb-lang-opt" data-lang="de" onclick="fbSelectLang('de')" style="display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;border-radius:6px;color:var(--muted);font-family:var(--body);font-size:13px;font-weight:500;padding:8px 10px;cursor:pointer;transition:all .1s;"><span style="font-size:18px">🇩🇪</span> Deutsch</button>
+        </div>
       </div>
       <a class="btn-nav" href="/cbapp/" data-i18n="fb_back">← Terug naar site</a>
     </div>
@@ -844,7 +850,28 @@
     },
   };
 
+  const FB_FLAGS = { nl: '🇳🇱', en: '🇬🇧', de: '🇩🇪' };
   const FB_LANG_KEY = 'cb_lang';
+
+  function toggleFbLangMenu() {
+    const menu = document.getElementById('langMenu');
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  }
+
+  function fbSelectLang(lang) {
+    fbSetLang(lang);
+    document.getElementById('langFlag').textContent = FB_FLAGS[lang] || '🇳🇱';
+    document.querySelectorAll('.fb-lang-opt').forEach(o => {
+      o.style.color = o.dataset.lang === lang ? 'var(--text)' : 'var(--muted)';
+      o.style.fontWeight = o.dataset.lang === lang ? '600' : '500';
+    });
+    document.getElementById('langMenu').style.display = 'none';
+  }
+
+  document.addEventListener('click', e => {
+    const dd = document.getElementById('langDropdown');
+    if (dd && !dd.contains(e.target)) document.getElementById('langMenu').style.display = 'none';
+  });
 
   function fbGetLang() {
     const s = localStorage.getItem(FB_LANG_KEY);
@@ -887,7 +914,9 @@
     .lang-btn.active{color:var(--text);border-color:var(--border2);}
   </style>`);
 
-  fbSetLang(fbGetLang());
+  const _initLang = fbGetLang();
+  document.getElementById('langFlag').textContent = FB_FLAGS[_initLang] || '🇳🇱';
+  fbSetLang(_initLang);
   </script>
 
 </body>
