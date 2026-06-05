@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Continuity Bridge GUI - LockitNetwork PDF + ALE combiner"""
 
-import sys, re, os, threading, queue as _queue
+import sys, re, os, threading, queue as _queue, unicodedata as _ud
 from pathlib import Path
 
 try:
@@ -670,6 +670,83 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                     log(f"Fout bij pagina {page.page_number}: {_e}", "warn")
                 continue  # TDDOS pagina verwerkt
 
+            # ── LockitNetwork Editors Log (DE) ────────────────────────────
+            # Duits formaat: per pagina meerdere camera-secties (Cam A, Cam BCP).
+            # Kolommen: Take | Clip | K/NK | Länge | Take Kommentar
+            # K = Gut (goed), NK = Nicht Gut (afgekeurd)
+            if "K/NK" in text and "Cam " in text and "Länge" in text:
+                try:
+                    m_set   = re.search(r'Set:\s*(.+?)\s+Einst\.\s*:\s*(\d+)', text)
+                    set_name = m_set.group(1).strip() if m_set else ""
+                    einst    = m_set.group(2) if m_set else ""
+                    scene_label = f"{set_name} E{einst}" if set_name else ""
+
+                    # Beschrijving per camera: "Einstellungsbeschreibung: A: ... BCP: ..."
+                    cam_desc: dict[str, str] = {}
+                    einst_m = re.search(r'Einstellungs-\s*beschreibung:\s*(.*?)(?=Synopsis:|Szenenkommentar:|$)',
+                                        text, re.DOTALL)
+                    if einst_m:
+                        einst_text = einst_m.group(1).replace('\n', ' ')
+                        for dm in re.finditer(r'(\w+):\s*(.+?)(?=\s+\w+:|$)', einst_text):
+                            cam_desc[dm.group(1)] = dm.group(2).strip()
+
+                    cur_cam = ""
+                    for t in page.extract_tables():
+                        for row in t:
+                            if not row: continue
+                            cell0 = str(row[0] or "").strip()
+
+                            # Camera-kop: "Cam A Rolle(n): A001 Ton: 1"
+                            m_cam = re.match(r'Cam\s+(\w+)\s+Rolle', cell0)
+                            if m_cam:
+                                cur_cam = m_cam.group(1)  # "A", "BCP", "B", …
+                                continue
+
+                            # Header-rij overslaan
+                            if cell0 == "Take":
+                                continue
+
+                            # Take-rij
+                            if not re.match(r'^\d+$', cell0):
+                                continue
+                            if len(row) < 3:
+                                continue
+
+                            clip_name = str(row[1] or "").strip()
+                            knk       = str(row[2] or "").strip()  # "K" of "NK"
+                            notes     = (str(row[4] or "").strip().replace("\n", " ")
+                                         if len(row) > 4 else "")
+
+                            circle = "K" if knk == "K" else ("NK" if knk == "NK" else knk)
+                            desc   = cam_desc.get(cur_cam, "")
+
+                            clip_info = {
+                                "circle":      circle,
+                                "scene":       scene_label,
+                                "description": desc,
+                                "take_notes":  notes,
+                                "page_note":   "",
+                                "is_pu":       False,
+                                "stars":       "",
+                            }
+
+                            # Sla op met clip_name als primaire sleutel
+                            # (A-camera: "A001C002" → prefix-match op ALE-naam)
+                            if clip_name and clip_name not in clips:
+                                clips[clip_name] = clip_info
+
+                            # BCP-camera: ook opslaan als "LNDE_B:{rol:03d}:{clip:03d}"
+                            # voor matching op ALE-namen als "B001_05301052_C002"
+                            m_bcp = re.match(r'BCP_(\d+)_C(\d+)', clip_name)
+                            if m_bcp:
+                                lnde_key = f"LNDE_B:{int(m_bcp.group(1)):03d}:{int(m_bcp.group(2)):03d}"
+                                if lnde_key not in clips:
+                                    clips[lnde_key] = clip_info
+
+                except Exception as _e:
+                    log(f"Fout bij pagina {page.page_number}: {_e}", "warn")
+                continue  # LockitNetwork DE pagina verwerkt
+
             # ── Waste Clips ────────────────────────────────────────────────
             if "Waste Clips" in text:
                 for m in re.finditer(r"(A\d{3}C\d{3})", text):
@@ -1024,17 +1101,29 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
                 tddos_key = f"{m_tddos.group(1)}-{m_tddos.group(2).zfill(2)}"
                 info = clip_data.get(tddos_key)
 
+        # LockitNetwork DE: BCP-camera ALE-naam "B001_05301052_C002" → "LNDE_B:001:002"
+        if info is None:
+            m_lnde = re.match(r'^B(\d{3})_\d+_C(\d+)', parts[name_idx])
+            if m_lnde:
+                lnde_key = f"LNDE_B:{m_lnde.group(1)}:{int(m_lnde.group(2)):03d}"
+                info = clip_data.get(lnde_key)
+
         if info:
             matched += 1
             if write_rating and rating_idx is not None:
                 if info.get("stars"):
                     try:
                         n = int(info["stars"])
-                        parts[rating_idx] = ("*" * n) if star_format == "sterren" else str(n)
+                        if star_format == "sterren":
+                            parts[rating_idx] = "*" * n
+                        elif star_format == "letters":
+                            parts[rating_idx] = ("A","B","C","D","E","")[max(0, min(5-n, 5))]
+                        else:
+                            parts[rating_idx] = str(n)
                     except (ValueError, TypeError):
                         parts[rating_idx] = info["stars"]
-                elif info["circle"]:
-                    parts[rating_idx] = info["circle"]  # andere formaten: V/X
+                elif info.get("circle"):
+                    parts[rating_idx] = info["circle"]  # V/X pass-through
             # Schrijf tekstvelden: zelfde kolom-idx → samenvoegen met " / "
             _cw = {}  # col_idx → [waarden]
             _cw_add(_cw, take_notes_idx, info.get("take_notes"))
@@ -1049,7 +1138,12 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
             if stars_idx is not None and info.get("stars"):
                 try:
                     n = int(info["stars"])
-                    parts[stars_idx] = ("*" * n) if star_format == "sterren" else str(n)
+                    if star_format == "sterren":
+                        parts[stars_idx] = "*" * n
+                    elif star_format == "letters":
+                        parts[stars_idx] = ("A","B","C","D","E","")[max(0, min(5-n, 5))]
+                    else:
+                        parts[stars_idx] = str(n)
                 except (ValueError, TypeError):
                     parts[stars_idx] = info["stars"]
             # PU-markering in kolom
@@ -1071,7 +1165,7 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
             row_str += "\t"
         new_data_lines.append(row_str)
 
-    log(f"ALE verwerkt: {matched} clips bijgewerkt", "info")
+    log(t("log_ale_matched", n=matched), "info")
     _hdr_sep = "\t" if (new_cols or lines[col_idx + 1].endswith("\t")) else ""
     out_lines = lines[:col_idx] + ["Column", "\t".join(col_headers) + _hdr_sep, "", "Data"] + new_data_lines
     result = le.join(out_lines)
@@ -1192,7 +1286,555 @@ _patch_nsmenuitem_for_macos15plus()
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.3.4 (Beta)"
+VERSION       = "1.3.5 (Beta)"
+
+# ── Vertalingen ────────────────────────────────────────────────────────────────
+STRINGS: dict[str, dict[str, str]] = {
+    "nl": {
+        # Vensterttitels
+        "wintitle_main":           "Continuity Bridge",
+        "wintitle_prefs":          "Voorkeuren",
+        "wintitle_faq":            "FAQ — Continuity Bridge",
+        "wintitle_about":          "Over Continuity Bridge",
+        "wintitle_license":        "Licentie activeren",
+        "wintitle_license_info":   "Licentie",
+        "wintitle_update":         "Update beschikbaar",
+        "wintitle_no_update":      "Geen updates",
+        "wintitle_update_check":   "Update-check",
+        "wintitle_layout":         "Rapport herkennen",
+        "wintitle_sold":           "Verkochte licenties",
+        "wintitle_col_pick":       "Kies kolom",
+        "wintitle_revoke":         "Licentie intrekken",
+        "wintitle_remove_lic":     "Licentie verwijderen",
+        "wintitle_lic_question":   "Licentie",
+        # Menubar
+        "menu_about":              "Over Continuity Bridge",
+        "menu_prefs":              "Voorkeuren…",
+        "menu_quit":               "Beëindig Continuity Bridge",
+        "menu_license":            "Licentie…",
+        "menu_remove_license":     "Verwijder licentie…",
+        "menu_faq":                "FAQ…",
+        "menu_check_updates":      "Check voor updates…",
+        # Sectielabels hoofdscherm
+        "section_ale":             "Avid Log Exchange file (ALE)",
+        "section_pdf":             "Continuïteitsrapport (PDF)",
+        "section_notes_col":       "Notes → kolom",
+        # Bestandswidget
+        "file_drop_hint":          "Sleep bestanden hier of voeg toe…",
+        "file_n_selected":         "{n} {word} geselecteerd",
+        "file_word_single":        "bestand",
+        "file_word_plural":        "bestanden",
+        "btn_choose":              "Kies…",
+        # Hints
+        "hint_more_settings":      "⚙  Meer instellingen in Voorkeuren  (⌘,)",
+        "btn_clear_all":           "↺  Wis alles",
+        "btn_process":             "✦  Verwerk",
+        "btn_busy":                "Bezig…",
+        # Voorkeuren-venster
+        "prefs_title":             "Voorkeuren",
+        "prefs_section_per_take":  "PER TAKE",
+        "prefs_section_general":   "ALGEMENE OPMERKINGEN PER SLATE",
+        "prefs_notes":             "Notes",
+        "prefs_rating":            "Rating",
+        "prefs_stars_as":          "sterren als:",
+        "prefs_stars_stars":       "sterren (***)",
+        "prefs_stars_number":      "cijfer (1-5)",
+        "prefs_stars_letter":      "letters (X/V)",
+        "prefs_write_pu":          "Schrijf (PU)",
+        "prefs_write_afg":         "Schrijf (AFG)",
+        "prefs_position":          "positie:",
+        "prefs_pos_before":        "voor",
+        "prefs_pos_after":         "achter",
+        "prefs_sound_notes":       "Sound Notes",
+        "prefs_camera_notes":      "Camera Notes",
+        "prefs_opmerkingen":       "Opmerkingen",
+        "prefs_output_dir":        "Uitvoermap",
+        "prefs_output_dir_hint":   "(leeg = zelfde map als ALE)",
+        "prefs_filename":          "Bestandsnaam",
+        "btn_close":               "Sluit",
+        "btn_choose_dir":          "Kies…",
+        "prefs_lang_label":        "Taal / Language / Sprache",
+        "prefs_lang_restart_hint": "Herstart de app om de taal toe te passen",
+        # Log-berichten
+        "log_ale_matched":         "ALE verwerkt: {n} clips bijgewerkt",
+        "log_saved":               "Opgeslagen  —  {name}",
+        "log_done_one":            "✓  Klaar  —  1 ALE bestand opgeslagen",
+        "log_done_many":           "✓  Klaar  —  {n} ALE bestanden opgeslagen",
+        # Kolom-picker
+        "col_pick_search":         "Zoek:",
+        "col_pick_own_label":      "Of typ eigen naam:",
+        "btn_cancel":              "Annuleer",
+        "btn_pick":                "Kies",
+        "col_pick_placeholder":    "Kies kolom…",
+        # Update-dialoog
+        "update_available":        "Versie {ver} beschikbaar",
+        "update_you_have":         "Jij hebt {ver}",
+        "update_btn_install":      "Update & Herstart",
+        "update_btn_later":        "Later",
+        "update_status_download":  "Downloaden… {kb} KB",
+        "update_status_install":   "Installeren…",
+        "update_status_done":      "Update klaar!",
+        "update_win_status_done":  "Installer gestart — volg de instructies.",
+        "update_btn_restart":      "\U0001f504  Herstart app",
+        "update_error_prefix":     "Fout: ",
+        "update_no_update_msg":    "Je hebt de nieuwste versie ({ver}).",
+        "update_fetch_error":      "Kon de versie-info niet ophalen.\nControleer je internetverbinding of kijk op:\ngithub.com/{repo}/releases",
+        # Over-venster
+        "about_version":           "Versie {ver}",
+        "about_author":            "by Michiel Boesveldt  © 2026",
+        "btn_ok":                  "OK",
+        # Licentie-dialoog
+        "lic_name_label":          "Naam",
+        "lic_serial_label":        "Serienummer",
+        "lic_btn_activate":        "Activeer",
+        "lic_btn_buy":             "\U0001f6d2  Koop licentie",
+        "lic_buy_after":           "Na betaling ontvang je serial per mail.",
+        "lic_verify_msg":          "Activatie verifiëren…",
+        "lic_name_mismatch":       "✗ Naam komt niet overeen met licentie.",
+        "lic_already_bound":       "✗ Serial al geactiveerd op een andere machine.\nNeem contact op met support@studiomichielboesveldt.nl",
+        "lic_removed_msg":         "Licentie verwijderd. Voer een nieuw serienummer in.",
+        "lic_remove_confirm":      "Licentie verwijderen van deze Mac?\n\nJe moet daarna een nieuw serienummer invoeren.",
+        "lic_ask_new_serial":      "Nieuw serienummer invoeren?",
+        "lic_active_label":        "✓  Actief",
+        # Licentiebeheer
+        "mgr_token_label":         "GitHub manager token:",
+        "mgr_btn_save_load":       "Opslaan & laden",
+        "mgr_enter_token":         "Voer je GitHub manager token in.",
+        "mgr_loading":             "Laden…",
+        "mgr_status_valid":        "Geldig",
+        "mgr_status_expired":      "Verlopen",
+        "mgr_status_revoked":      "Ingetrokken",
+        "mgr_revoke_btn":          "⊘  Intrek geselecteerde licentie",
+        "mgr_revoke_confirm":      "Licentie van {naam} intrekken?\n\n{serial}\n\nDit kan niet ongedaan worden gemaakt.",
+        "mgr_revoking":            "Licentie intrekken…",
+        "mgr_revoked_ok":          "Ingetrokken: {serial}…",
+        "mgr_revoke_err":          "Fout bij intrekken: {err}",
+        "mgr_fetch_err":           "Fout: {err}",
+        # Layout mapper
+        "layout_unknown_format":   "Onbekend rapport-formaat",
+        "layout_hint":             "{fname}  —  wijs aan welke kolom wat betekent.",
+        "layout_name_label":       "Naam voor dit formaat:",
+        "layout_no_take_col":      "Wijs minimaal de kolom 'Take' aan.",
+        "btn_detect_process":      "Herken & verwerk",
+        "btn_skip":                "Overslaan",
+        "field_ignore":            "— negeer —",
+        "field_slate_scene":       "Slate / Scene",
+        "field_take":              "Take",
+        "field_note":              "Opmerking / Note",
+        "field_rating":            "Rating (V/X)",
+        "field_camera_roll":       "Camerarol",
+        # Bestandsdialogen
+        "dlg_pick_pdf":            "Kies PDF bestanden",
+        "dlg_pick_ale":            "Kies ALE bestanden",
+        "dlg_pick_dir":            "Kies uitvoermap",
+        # Run-fouten
+        "err_no_license":          "Geen geldige licentie. Activeer via Continuity Bridge → Licentie…",
+        "err_no_pdf":              "Kies eerst een of meer PDF bestanden.",
+        "err_no_ale":              "Kies eerst een of meer ALE bestanden.",
+        # FAQ
+        "faq_title":               "FAQ",
+        "faq_subtitle":            "Veelgestelde vragen over Continuity Bridge",
+        "faq_q1":  "Hoe importeer ik het verwerkte ALE terug in Avid?",
+        "faq_a1":  "Ga in Avid naar Preferences → User → Import → Shot Log. "
+                   "Kies onder Events de optie 'Merge events with known master clips'. "
+                   "Zo voegt Avid de comments en ratings toe aan je bestaande clips "
+                   "in plaats van nieuwe clips aan te maken.",
+        "faq_q2":  "Welke PDF-formaten worden ondersteund?",
+        "faq_a2":  "Continuity Bridge ondersteunt de meeste gangbare continuïteitsrapporten. "
+                   "Werkt jouw rapport niet goed? Stuur het op via "
+                   "support@studiomichielboesveldt.nl — we kijken ernaar.",
+        "faq_q3":  "Verdwijnt mijn info na het maken van een multiclip?",
+        "faq_a3":  "Dat kan. Importeer de ALE altijd vóórdat je multiclips aanmaakt. "
+                   "Avid draagt metadata niet automatisch over aan bestaande multiclips.",
+        "faq_q4":  "Ik krijg een waarschuwing dat de app van een onbekende ontwikkelaar is.",
+        "faq_a4":  "Dit is een standaard macOS-beveiliging voor apps buiten de App Store. "
+                   "Je kunt dit veilig negeren: ga naar Systeeminstellingen → Privacy en "
+                   "beveiliging → klik op 'Toch openen'. "
+                   "We werken aan een Apple Developer-registratie zodat deze melding verdwijnt.",
+        "faq_q5":  "Werkt Continuity Bridge offline?",
+        "faq_a5":  "Ja, volledig. Na activatie heeft de app geen internetverbinding nodig. "
+                   "Verwerking gebeurt lokaal op je Mac of pc.",
+        "faq_q6":  "Kan ik de licentie op meerdere Macs gebruiken?",
+        "faq_a6":  "Een licentie is gekoppeld aan één machine. Ga je over naar een nieuwe Mac? "
+                   "Verwijder de licentie eerst via Help → Verwijder licentie, en activeer "
+                   "daarna op je nieuwe Mac. Ben je dat vergeten? "
+                   "Mail naar support@studiomichielboesveldt.nl.",
+        "faq_q7":  "Wat gebeurt er als mijn licentie verloopt?",
+        "faq_a7":  "Na een jaar stopt de app met verwerken totdat je verlengt. "
+                   "Je bestanden blijven gewoon intact — er verdwijnt niets.",
+        "faq_q8":  "Mijn clips worden niet herkend — wat nu?",
+        "faq_a8":  "Controleer of de clipnamen in je ALE overeenkomen met de namen in het "
+                   "continuïteitsrapport. Kleine afwijkingen kunnen een mismatch geven. "
+                   "Neem contact op via support@studiomichielboesveldt.nl.",
+    },
+    "en": {
+        # Window titles
+        "wintitle_main":           "Continuity Bridge",
+        "wintitle_prefs":          "Preferences",
+        "wintitle_faq":            "FAQ — Continuity Bridge",
+        "wintitle_about":          "About Continuity Bridge",
+        "wintitle_license":        "Activate License",
+        "wintitle_license_info":   "License",
+        "wintitle_update":         "Update Available",
+        "wintitle_no_update":      "No Updates",
+        "wintitle_update_check":   "Update Check",
+        "wintitle_layout":         "Recognize Report",
+        "wintitle_sold":           "Sold Licenses",
+        "wintitle_col_pick":       "Pick Column",
+        "wintitle_revoke":         "Revoke License",
+        "wintitle_remove_lic":     "Remove License",
+        "wintitle_lic_question":   "License",
+        # Menubar
+        "menu_about":              "About Continuity Bridge",
+        "menu_prefs":              "Preferences…",
+        "menu_quit":               "Quit Continuity Bridge",
+        "menu_license":            "License…",
+        "menu_remove_license":     "Remove License…",
+        "menu_faq":                "FAQ…",
+        "menu_check_updates":      "Check for Updates…",
+        # Main screen section labels
+        "section_ale":             "Avid Log Exchange file (ALE)",
+        "section_pdf":             "Continuity Report (PDF)",
+        "section_notes_col":       "Notes → column",
+        # File widget
+        "file_drop_hint":          "Drop files here or add…",
+        "file_n_selected":         "{n} {word} selected",
+        "file_word_single":        "file",
+        "file_word_plural":        "files",
+        "btn_choose":              "Choose…",
+        # Hints
+        "hint_more_settings":      "⚙  More settings in Preferences  (⌘,)",
+        "btn_clear_all":           "↺  Clear All",
+        "btn_process":             "✦  Process",
+        "btn_busy":                "Processing…",
+        # Preferences window
+        "prefs_title":             "Preferences",
+        "prefs_section_per_take":  "PER TAKE",
+        "prefs_section_general":   "GENERAL NOTES PER SLATE",
+        "prefs_notes":             "Notes",
+        "prefs_rating":            "Rating",
+        "prefs_stars_as":          "stars as:",
+        "prefs_stars_stars":       "stars (***)",
+        "prefs_stars_number":      "number (1-5)",
+        "prefs_stars_letter":      "letters (X/V)",
+        "prefs_write_pu":          "Write (PU)",
+        "prefs_write_afg":         "Write (AFG)",
+        "prefs_position":          "position:",
+        "prefs_pos_before":        "before",
+        "prefs_pos_after":         "after",
+        "prefs_sound_notes":       "Sound Notes",
+        "prefs_camera_notes":      "Camera Notes",
+        "prefs_opmerkingen":       "Notes",
+        "prefs_output_dir":        "Output folder",
+        "prefs_output_dir_hint":   "(empty = same folder as ALE)",
+        "prefs_filename":          "Filename",
+        "btn_close":               "Close",
+        "btn_choose_dir":          "Choose…",
+        "prefs_lang_label":        "Taal / Language / Sprache",
+        "prefs_lang_restart_hint": "Restart the app to apply the language",
+        # Log messages
+        "log_ale_matched":         "ALE processed: {n} clips updated",
+        "log_saved":               "Saved  —  {name}",
+        "log_done_one":            "✓  Done  —  1 ALE file saved",
+        "log_done_many":           "✓  Done  —  {n} ALE files saved",
+        # Column picker
+        "col_pick_search":         "Search:",
+        "col_pick_own_label":      "Or type custom name:",
+        "btn_cancel":              "Cancel",
+        "btn_pick":                "Pick",
+        "col_pick_placeholder":    "Choose column…",
+        # Update dialog
+        "update_available":        "Version {ver} available",
+        "update_you_have":         "You have {ver}",
+        "update_btn_install":      "Update & Restart",
+        "update_btn_later":        "Later",
+        "update_status_download":  "Downloading… {kb} KB",
+        "update_status_install":   "Installing…",
+        "update_status_done":      "Update complete!",
+        "update_win_status_done":  "Installer started — follow the instructions.",
+        "update_btn_restart":      "\U0001f504  Restart app",
+        "update_error_prefix":     "Error: ",
+        "update_no_update_msg":    "You already have the latest version ({ver}).",
+        "update_fetch_error":      "Could not retrieve version info.\nCheck your internet connection or visit:\ngithub.com/{repo}/releases",
+        # About window
+        "about_version":           "Version {ver}",
+        "about_author":            "by Michiel Boesveldt  © 2026",
+        "btn_ok":                  "OK",
+        # License dialog
+        "lic_name_label":          "Name",
+        "lic_serial_label":        "Serial number",
+        "lic_btn_activate":        "Activate",
+        "lic_btn_buy":             "\U0001f6d2  Buy License",
+        "lic_buy_after":           "After payment you will receive the serial by email.",
+        "lic_verify_msg":          "Verifying activation…",
+        "lic_name_mismatch":       "✗ Name does not match the license.",
+        "lic_already_bound":       "✗ Serial already activated on another machine.\nContact support@studiomichielboesveldt.nl",
+        "lic_removed_msg":         "License removed. Enter a new serial number.",
+        "lic_remove_confirm":      "Remove license from this Mac?\n\nYou will need to enter a new serial number afterwards.",
+        "lic_ask_new_serial":      "Enter new serial number?",
+        "lic_active_label":        "✓  Active",
+        # License manager
+        "mgr_token_label":         "GitHub manager token:",
+        "mgr_btn_save_load":       "Save & load",
+        "mgr_enter_token":         "Enter your GitHub manager token.",
+        "mgr_loading":             "Loading…",
+        "mgr_status_valid":        "Valid",
+        "mgr_status_expired":      "Expired",
+        "mgr_status_revoked":      "Revoked",
+        "mgr_revoke_btn":          "⊘  Revoke selected license",
+        "mgr_revoke_confirm":      "Revoke license for {naam}?\n\n{serial}\n\nThis cannot be undone.",
+        "mgr_revoking":            "Revoking license…",
+        "mgr_revoked_ok":          "Revoked: {serial}…",
+        "mgr_revoke_err":          "Error revoking: {err}",
+        "mgr_fetch_err":           "Error: {err}",
+        # Layout mapper
+        "layout_unknown_format":   "Unknown report format",
+        "layout_hint":             "{fname}  —  indicate which column means what.",
+        "layout_name_label":       "Name for this format:",
+        "layout_no_take_col":      "Indicate at least the 'Take' column.",
+        "btn_detect_process":      "Detect & process",
+        "btn_skip":                "Skip",
+        "field_ignore":            "— ignore —",
+        "field_slate_scene":       "Slate / Scene",
+        "field_take":              "Take",
+        "field_note":              "Note / Comment",
+        "field_rating":            "Rating (V/X)",
+        "field_camera_roll":       "Camera roll",
+        # File dialogs
+        "dlg_pick_pdf":            "Choose PDF files",
+        "dlg_pick_ale":            "Choose ALE files",
+        "dlg_pick_dir":            "Choose output folder",
+        # Run errors
+        "err_no_license":          "No valid license. Activate via Continuity Bridge → License…",
+        "err_no_pdf":              "Please choose one or more PDF files first.",
+        "err_no_ale":              "Please choose one or more ALE files first.",
+        # FAQ
+        "faq_title":               "FAQ",
+        "faq_subtitle":            "Frequently asked questions about Continuity Bridge",
+        "faq_q1":  "How do I import the processed ALE back into Avid?",
+        "faq_a1":  "In Avid go to Preferences → User → Import → Shot Log. "
+                   "Under Events choose 'Merge events with known master clips'. "
+                   "This way Avid adds the comments and ratings to your existing clips "
+                   "instead of creating new ones.",
+        "faq_q2":  "Which PDF formats are supported?",
+        "faq_a2":  "Continuity Bridge supports most common continuity reports. "
+                   "Does your report not work correctly? Send it to "
+                   "support@studiomichielboesveldt.nl — we will take a look.",
+        "faq_q3":  "Will my metadata disappear after creating a multiclip?",
+        "faq_a3":  "It can. Always import the ALE before creating multiclips. "
+                   "Avid does not automatically transfer metadata to existing multiclips.",
+        "faq_q4":  "I get a warning that the app is from an unidentified developer.",
+        "faq_a4":  "This is standard macOS security for apps outside the App Store. "
+                   "You can safely dismiss it: go to System Settings → Privacy & "
+                   "Security → click 'Open Anyway'. "
+                   "We are working on an Apple Developer registration to remove this warning.",
+        "faq_q5":  "Does Continuity Bridge work offline?",
+        "faq_a5":  "Yes, fully. After activation the app needs no internet connection. "
+                   "Processing happens locally on your Mac or PC.",
+        "faq_q6":  "Can I use the license on multiple Macs?",
+        "faq_a6":  "A license is tied to one machine. Moving to a new Mac? "
+                   "Remove the license first via Help → Remove License, then activate "
+                   "on your new Mac. Forgot? "
+                   "Email support@studiomichielboesveldt.nl.",
+        "faq_q7":  "What happens when my license expires?",
+        "faq_a7":  "After one year the app stops processing until you renew. "
+                   "Your files stay intact — nothing is deleted.",
+        "faq_q8":  "My clips are not recognized — what now?",
+        "faq_a8":  "Check that the clip names in your ALE match the names in the "
+                   "continuity report. Small differences can cause a mismatch. "
+                   "Contact support@studiomichielboesveldt.nl.",
+    },
+    "de": {
+        # Fenstertitel
+        "wintitle_main":           "Continuity Bridge",
+        "wintitle_prefs":          "Einstellungen",
+        "wintitle_faq":            "FAQ — Continuity Bridge",
+        "wintitle_about":          "Über Continuity Bridge",
+        "wintitle_license":        "Lizenz aktivieren",
+        "wintitle_license_info":   "Lizenz",
+        "wintitle_update":         "Update verfügbar",
+        "wintitle_no_update":      "Keine Updates",
+        "wintitle_update_check":   "Update-Prüfung",
+        "wintitle_layout":         "Bericht erkennen",
+        "wintitle_sold":           "Verkaufte Lizenzen",
+        "wintitle_col_pick":       "Spalte wählen",
+        "wintitle_revoke":         "Lizenz widerrufen",
+        "wintitle_remove_lic":     "Lizenz entfernen",
+        "wintitle_lic_question":   "Lizenz",
+        # Menüleiste
+        "menu_about":              "Über Continuity Bridge",
+        "menu_prefs":              "Einstellungen…",
+        "menu_quit":               "Continuity Bridge beenden",
+        "menu_license":            "Lizenz…",
+        "menu_remove_license":     "Lizenz entfernen…",
+        "menu_faq":                "FAQ…",
+        "menu_check_updates":      "Nach Updates suchen…",
+        # Abschnittsbeschriftungen Hauptfenster
+        "section_ale":             "Avid Log Exchange file (ALE)",
+        "section_pdf":             "Kontinuitätsbericht (PDF)",
+        "section_notes_col":       "Notizen → Spalte",
+        # Datei-Widget
+        "file_drop_hint":          "Dateien hierher ziehen oder hinzufügen…",
+        "file_n_selected":         "{n} {word} ausgewählt",
+        "file_word_single":        "Datei",
+        "file_word_plural":        "Dateien",
+        "btn_choose":              "Wählen…",
+        # Hinweise
+        "hint_more_settings":      "⚙  Weitere Einstellungen  (⌘,)",
+        "btn_clear_all":           "↺  Alles löschen",
+        "btn_process":             "✦  Verarbeiten",
+        "btn_busy":                "Verarbeite…",
+        # Einstellungsfenster
+        "prefs_title":             "Einstellungen",
+        "prefs_section_per_take":  "PRO TAKE",
+        "prefs_section_general":   "ALLGEMEINE ANMERKUNGEN PRO SLATE",
+        "prefs_notes":             "Notizen",
+        "prefs_rating":            "Bewertung",
+        "prefs_stars_as":          "Sterne als:",
+        "prefs_stars_stars":       "Sterne (***)",
+        "prefs_stars_number":      "Zahl (1-5)",
+        "prefs_stars_letter":      "Buchstaben (X/V)",
+        "prefs_write_pu":          "Schreibe (PU)",
+        "prefs_write_afg":         "Schreibe (AFG)",
+        "prefs_position":          "Position:",
+        "prefs_pos_before":        "vor",
+        "prefs_pos_after":         "nach",
+        "prefs_sound_notes":       "Tonnotizen",
+        "prefs_camera_notes":      "Kameranotizen",
+        "prefs_opmerkingen":       "Anmerkungen",
+        "prefs_output_dir":        "Ausgabeordner",
+        "prefs_output_dir_hint":   "(leer = gleicher Ordner wie ALE)",
+        "prefs_filename":          "Dateiname",
+        "btn_close":               "Schließen",
+        "btn_choose_dir":          "Wählen…",
+        "prefs_lang_label":        "Taal / Language / Sprache",
+        "prefs_lang_restart_hint": "App neu starten um die Sprache zu übernehmen",
+        # Log-Meldungen
+        "log_ale_matched":         "ALE verarbeitet: {n} Clips aktualisiert",
+        "log_saved":               "Gespeichert  —  {name}",
+        "log_done_one":            "✓  Fertig  —  1 ALE-Datei gespeichert",
+        "log_done_many":           "✓  Fertig  —  {n} ALE-Dateien gespeichert",
+        # Spaltenauswahl
+        "col_pick_search":         "Suchen:",
+        "col_pick_own_label":      "Oder eigenen Namen eingeben:",
+        "btn_cancel":              "Abbrechen",
+        "btn_pick":                "Wählen",
+        "col_pick_placeholder":    "Spalte wählen…",
+        # Update-Dialog
+        "update_available":        "Version {ver} verfügbar",
+        "update_you_have":         "Du hast {ver}",
+        "update_btn_install":      "Update & Neustart",
+        "update_btn_later":        "Später",
+        "update_status_download":  "Herunterladen… {kb} KB",
+        "update_status_install":   "Installieren…",
+        "update_status_done":      "Update abgeschlossen!",
+        "update_win_status_done":  "Installer gestartet — folge den Anweisungen.",
+        "update_btn_restart":      "\U0001f504  App neu starten",
+        "update_error_prefix":     "Fehler: ",
+        "update_no_update_msg":    "Du hast bereits die neueste Version ({ver}).",
+        "update_fetch_error":      "Versionsinformationen konnten nicht abgerufen werden.\nÜberprüfe deine Internetverbindung oder besuche:\ngithub.com/{repo}/releases",
+        # Über-Fenster
+        "about_version":           "Version {ver}",
+        "about_author":            "von Michiel Boesveldt  © 2026",
+        "btn_ok":                  "OK",
+        # Lizenz-Dialog
+        "lic_name_label":          "Name",
+        "lic_serial_label":        "Seriennummer",
+        "lic_btn_activate":        "Aktivieren",
+        "lic_btn_buy":             "\U0001f6d2  Lizenz kaufen",
+        "lic_buy_after":           "Nach der Zahlung erhältst du die Seriennummer per E-Mail.",
+        "lic_verify_msg":          "Aktivierung wird überprüft…",
+        "lic_name_mismatch":       "✗ Name stimmt nicht mit der Lizenz überein.",
+        "lic_already_bound":       "✗ Seriennummer bereits auf einem anderen Gerät aktiviert.\nKontaktiere support@studiomichielboesveldt.nl",
+        "lic_removed_msg":         "Lizenz entfernt. Gib eine neue Seriennummer ein.",
+        "lic_remove_confirm":      "Lizenz von diesem Mac entfernen?\n\nDu musst danach eine neue Seriennummer eingeben.",
+        "lic_ask_new_serial":      "Neue Seriennummer eingeben?",
+        "lic_active_label":        "✓  Aktiv",
+        # Lizenzverwaltung
+        "mgr_token_label":         "GitHub-Manager-Token:",
+        "mgr_btn_save_load":       "Speichern & laden",
+        "mgr_enter_token":         "GitHub-Manager-Token eingeben.",
+        "mgr_loading":             "Lade…",
+        "mgr_status_valid":        "Gültig",
+        "mgr_status_expired":      "Abgelaufen",
+        "mgr_status_revoked":      "Widerrufen",
+        "mgr_revoke_btn":          "⊘  Ausgewählte Lizenz widerrufen",
+        "mgr_revoke_confirm":      "Lizenz von {naam} widerrufen?\n\n{serial}\n\nDies kann nicht rückgängig gemacht werden.",
+        "mgr_revoking":            "Lizenz wird widerrufen…",
+        "mgr_revoked_ok":          "Widerrufen: {serial}…",
+        "mgr_revoke_err":          "Fehler beim Widerrufen: {err}",
+        "mgr_fetch_err":           "Fehler: {err}",
+        # Layout-Mapper
+        "layout_unknown_format":   "Unbekanntes Berichtsformat",
+        "layout_hint":             "{fname}  —  weise an, welche Spalte was bedeutet.",
+        "layout_name_label":       "Name für dieses Format:",
+        "layout_no_take_col":      "Weise mindestens die Spalte 'Take' an.",
+        "btn_detect_process":      "Erkennen & verarbeiten",
+        "btn_skip":                "Überspringen",
+        "field_ignore":            "— ignorieren —",
+        "field_slate_scene":       "Slate / Scene",
+        "field_take":              "Take",
+        "field_note":              "Anmerkung / Notiz",
+        "field_rating":            "Bewertung (V/X)",
+        "field_camera_roll":       "Kamerarolle",
+        # Dateidialoge
+        "dlg_pick_pdf":            "PDF-Dateien wählen",
+        "dlg_pick_ale":            "ALE-Dateien wählen",
+        "dlg_pick_dir":            "Ausgabeordner wählen",
+        # Laufzeitfehler
+        "err_no_license":          "Keine gültige Lizenz. Aktiviere über Continuity Bridge → Lizenz…",
+        "err_no_pdf":              "Bitte zuerst eine oder mehrere PDF-Dateien auswählen.",
+        "err_no_ale":              "Bitte zuerst eine oder mehrere ALE-Dateien auswählen.",
+        # FAQ
+        "faq_title":               "FAQ",
+        "faq_subtitle":            "Häufig gestellte Fragen zu Continuity Bridge",
+        "faq_q1":  "Wie importiere ich das verarbeitete ALE zurück in Avid?",
+        "faq_a1":  "Gehe in Avid zu Preferences → User → Import → Shot Log. "
+                   "Wähle unter Events die Option 'Merge events with known master clips'. "
+                   "So fügt Avid die Kommentare und Bewertungen zu deinen vorhandenen Clips hinzu "
+                   "anstatt neue Clips zu erstellen.",
+        "faq_q2":  "Welche PDF-Formate werden unterstützt?",
+        "faq_a2":  "Continuity Bridge unterstützt die meisten gängigen Kontinuitätsberichte. "
+                   "Funktioniert dein Bericht nicht richtig? Schicke ihn an "
+                   "support@studiomichielboesveldt.nl — wir schauen uns das an.",
+        "faq_q3":  "Verschwinden meine Metadaten nach dem Erstellen eines Multiclips?",
+        "faq_a3":  "Das kann passieren. Importiere das ALE immer bevor du Multiclips erstellst. "
+                   "Avid überträgt Metadaten nicht automatisch auf vorhandene Multiclips.",
+        "faq_q4":  "Ich erhalte eine Warnung, dass die App von einem unbekannten Entwickler stammt.",
+        "faq_a4":  "Dies ist die Standard-macOS-Sicherheitsfunktion für Apps außerhalb des App Stores. "
+                   "Du kannst das sicher ignorieren: gehe zu Systemeinstellungen → Datenschutz & "
+                   "Sicherheit → klicke auf 'Trotzdem öffnen'. "
+                   "Wir arbeiten an einer Apple-Developer-Registrierung, damit diese Meldung verschwindet.",
+        "faq_q5":  "Funktioniert Continuity Bridge offline?",
+        "faq_a5":  "Ja, vollständig. Nach der Aktivierung benötigt die App keine Internetverbindung. "
+                   "Die Verarbeitung erfolgt lokal auf deinem Mac oder PC.",
+        "faq_q6":  "Kann ich die Lizenz auf mehreren Macs verwenden?",
+        "faq_a6":  "Eine Lizenz ist an ein Gerät gebunden. Wechselst du zu einem neuen Mac? "
+                   "Entferne die Lizenz zuerst über Hilfe → Lizenz entfernen, und aktiviere "
+                   "dann auf deinem neuen Mac. Vergessen? "
+                   "Schreib an support@studiomichielboesveldt.nl.",
+        "faq_q7":  "Was passiert, wenn meine Lizenz abläuft?",
+        "faq_a7":  "Nach einem Jahr stoppt die App mit der Verarbeitung bis du verlängerst. "
+                   "Deine Dateien bleiben unberührt — es wird nichts gelöscht.",
+        "faq_q8":  "Meine Clips werden nicht erkannt — was nun?",
+        "faq_a8":  "Überprüfe, ob die Clip-Namen in deinem ALE mit den Namen im "
+                   "Kontinuitätsbericht übereinstimmen. Kleine Abweichungen können zu Nichtübereinstimmungen führen. "
+                   "Kontaktiere support@studiomichielboesveldt.nl.",
+    },
+}
+
+# Module-level _prefs placeholder so t() can reference it before _load_prefs runs
+_prefs: dict = {}
+
+
+def t(key: str, **kwargs) -> str:
+    """Return translated string for current language, fallback to NL."""
+    lang = _prefs.get("language", "en") if _prefs else "en"
+    s = STRINGS.get(lang, STRINGS["nl"]).get(key) or STRINGS["nl"].get(key, f"[{key}]")
+    return s.format(**kwargs) if kwargs else s
+
+# ── End vertalingen ────────────────────────────────────────────────────────────
+
 GITHUB_REPO   = "scprdytj2s-beep/continuity-bridge"
 RELEASES_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases/latest"
@@ -1557,10 +2199,13 @@ _PREFS_DEFAULTS = {
     "afg_position":       "voor",
     "write_general_notes": False,
     "general_notes_col":  "Camera_Notes",
+    "language":           "en",
 }
-_INVALID_COL_VALUES = {"Kies kolom…", "Eigen naam…", "Kies kolom...", ""}
+_INVALID_COL_VALUES = {"Kies kolom…", "Choose column…", "Spalte wählen…",
+                       "Eigen naam…", "Kies kolom...", ""}
 
 def _load_prefs():
+    global _prefs
     try:
         if _PREFS_FILE.exists():
             data = _json_prefs.loads(_PREFS_FILE.read_text("utf-8"))
@@ -1573,9 +2218,11 @@ def _load_prefs():
             for key in ("rating_col_recent", "notes_col_recent"):
                 if not isinstance(prefs.get(key), list):
                     prefs[key] = []
+            _prefs = prefs
             return prefs
     except Exception:
         pass
+    _prefs = dict(_PREFS_DEFAULTS)
     return dict(_PREFS_DEFAULTS)
 
 def _add_recent(prefs, key, value, max_items=3):
@@ -1697,6 +2344,7 @@ class App:
         self.afg_position       = tk.StringVar(value=_p.get("afg_position", "voor"))
         self.write_general_notes = tk.BooleanVar(value=_p.get("write_general_notes", False))
         self.general_notes_col  = tk.StringVar(value=_p.get("general_notes_col", "Camera_Notes"))
+        self.language           = tk.StringVar(value=_p.get("language", "en"))
         self._prefs_cache = _p   # bewaar voor recents
 
         def _save_all():
@@ -1722,6 +2370,7 @@ class App:
                 "afg_position":       self.afg_position.get(),
                 "write_general_notes": self.write_general_notes.get(),
                 "general_notes_col":  self.general_notes_col.get(),
+                "language":           self.language.get(),
             })
         self._save_prefs_all = _save_all
 
@@ -1749,7 +2398,7 @@ class App:
         self.afg_position      .trace_add("write", _on_pref_change)
         self.write_general_notes.trace_add("write", _on_pref_change)
         self.general_notes_col .trace_add("write", _on_pref_change)
-        self.root.title("Continuity Bridge")
+        self.root.title(t("wintitle_main"))
         self.root.geometry("520x650")
         self.root.resizable(False, True)
         self.root.minsize(520, 520)
@@ -1779,8 +2428,8 @@ class App:
                     if not isinstance(releases, list) or not releases:
                         if not silent:
                             self.root.after(0, lambda: tk.messagebox.showinfo(
-                                "Geen updates",
-                                f"Je hebt de nieuwste versie ({VERSION})."))
+                                t("wintitle_no_update"),
+                                t("update_no_update_msg", ver=VERSION)))
                         return
                     data   = releases[0]
                     latest = data.get("tag_name", "").lstrip("v").strip()
@@ -1806,30 +2455,28 @@ class App:
                                         _show_update_dialog(lv, url))
                     elif not silent:
                         self.root.after(0, lambda: tk.messagebox.showinfo(
-                            "Geen updates",
-                            f"Je hebt de nieuwste versie ({VERSION})."))
+                            t("wintitle_no_update"),
+                            t("update_no_update_msg", ver=VERSION)))
                 except Exception:
                     if not silent:
                         self.root.after(0, lambda: tk.messagebox.showinfo(
-                            "Update-check",
-                            "Kon de versie-info niet ophalen.\n"
-                            "Controleer je internetverbinding of kijk op:\n"
-                            f"github.com/{GITHUB_REPO}/releases"))
+                            t("wintitle_update_check"),
+                            t("update_fetch_error", repo=GITHUB_REPO)))
             threading.Thread(target=_do, daemon=True).start()
 
         def _show_update_dialog(latest_version, dl_url):
             """In-app update dialog met progress bar en automatische herstart."""
             import webbrowser as _wb
             dlg = tk.Toplevel(self.root)
-            dlg.title("Update beschikbaar")
+            dlg.title(t("wintitle_update"))
             dlg.configure(bg=BG)
             dlg.resizable(False, False)
             dlg.geometry("420x230")
             dlg.grab_set()
 
-            tk.Label(dlg, text=f"Versie {latest_version} beschikbaar",
+            tk.Label(dlg, text=t("update_available", ver=latest_version),
                      bg=BG, fg=TEXT, font=("Helvetica Neue", 14, "bold")).pack(pady=(24, 4))
-            tk.Label(dlg, text=f"Jij hebt {VERSION}",
+            tk.Label(dlg, text=t("update_you_have", ver=VERSION),
                      bg=BG, fg=MUTED, font=("Helvetica Neue", 11)).pack()
 
             prog_frame = tk.Frame(dlg, bg=BG)
@@ -1882,11 +2529,11 @@ class App:
                             if total:
                                 dlg.after(0, lambda p=done/total*100: prog.config(value=p))
                             dlg.after(0, lambda d=done:
-                                status_lbl.config(text=f"Downloaden… {d//1024} KB"))
+                                status_lbl.config(text=t("update_status_download", kb=d//1024)))
                     tmp.close()
                     tmp_path = tmp.name
 
-                    dlg.after(0, lambda: status_lbl.config(text="Installeren…"))
+                    dlg.after(0, lambda: status_lbl.config(text=t("update_status_install")))
 
                     if _sys3.platform == 'win32':
                         import subprocess as _sp3
@@ -1930,15 +2577,15 @@ class App:
 
             def _finish_mac(install_path):
                 prog.config(value=100)
-                status_lbl.config(fg=SUCCESS, text="Update klaar!")
+                status_lbl.config(fg=SUCCESS, text=t("update_status_done"))
                 upd_cv.pack_forget()
                 later_cv.pack_forget()
-                rst = _rounded_btn(btn_frame, "🔄  Herstart app", lambda: _do_restart(install_path),
+                rst = _rounded_btn(btn_frame, t("update_btn_restart"), lambda: _do_restart(install_path),
                                    bg=AVID_B, hv=AVID_B_H, fg="white",
                                    font=("Helvetica Neue", 11, "bold"),
                                    px=20, py=7, r=10, pbg=BG)
                 rst.pack(side="left", padx=(0, 10))
-                lat = _rounded_btn(btn_frame, "Later", dlg.destroy,
+                lat = _rounded_btn(btn_frame, t("update_btn_later"), dlg.destroy,
                                    bg=SURFACE2, hv=BORDER2, fg=MUTED,
                                    font=("Helvetica Neue", 11),
                                    px=16, py=7, r=10, pbg=BG)
@@ -1946,7 +2593,7 @@ class App:
 
             def _finish_win():
                 prog.config(value=100)
-                status_lbl.config(fg=SUCCESS, text="Installer gestart — volg de instructies.")
+                status_lbl.config(fg=SUCCESS, text=t("update_win_status_done"))
                 later_cv.config(state="normal")
 
             def _do_restart(install_path):
@@ -1955,18 +2602,18 @@ class App:
                 _sys4.exit(0)
 
             def _on_error(err):
-                status_lbl.config(fg=ERROR, text=f"Fout: {err[:60]}")
+                status_lbl.config(fg=ERROR, text=t("update_error_prefix") + err[:60])
                 upd_cv.config(cursor="hand2")
                 upd_cv.bind("<Button-1>", lambda e: _start())
                 later_cv.config(cursor="hand2")
                 later_cv.bind("<Button-1>", lambda e: dlg.destroy())
 
-            upd_cv = _rounded_btn(btn_frame, "Update & Herstart", _start,
+            upd_cv = _rounded_btn(btn_frame, t("update_btn_install"), _start,
                                    bg=AVID_B, hv=AVID_B_H, fg="white",
                                    font=("Helvetica Neue", 11, "bold"),
                                    px=20, py=7, r=10, pbg=BG)
             upd_cv.pack(side="left", padx=(0, 10))
-            later_cv = _rounded_btn(btn_frame, "Later", dlg.destroy,
+            later_cv = _rounded_btn(btn_frame, t("update_btn_later"), dlg.destroy,
                                     bg=SURFACE2, hv=BORDER2, fg=MUTED,
                                     font=("Helvetica Neue", 11),
                                     px=16, py=7, r=10, pbg=BG)
@@ -2000,7 +2647,7 @@ class App:
                 return
 
             dlg = tk.Toplevel(self.root)
-            dlg.title("Rapport herkennen")
+            dlg.title(t("wintitle_layout"))
             dlg.configure(bg=BG)
             dlg.resizable(True, True)
             dlg.geometry("680x560")
@@ -2008,10 +2655,10 @@ class App:
 
             import os as _os2
             fname = _os2.path.basename(pdf_path)
-            tk.Label(dlg, text="Onbekend rapport-formaat",
+            tk.Label(dlg, text=t("layout_unknown_format"),
                      bg=BG, fg=TEXT, font=("Helvetica Neue", 14, "bold")).pack(
                 anchor="w", padx=24, pady=(20, 2))
-            tk.Label(dlg, text=f"{fname}  —  wijs aan welke kolom wat betekent.",
+            tk.Label(dlg, text=t("layout_hint", fname=fname),
                      bg=BG, fg=MUTED, font=("Helvetica Neue", 11)).pack(
                 anchor="w", padx=24, pady=(0, 14))
 
@@ -2020,8 +2667,8 @@ class App:
                                  highlightbackground=BORDER, highlightthickness=1)
             tbl_frame.pack(fill="x", padx=24, pady=(0, 16))
 
-            FIELD_OPTIONS = ["— negeer —", "Slate / Scene", "Take",
-                             "Opmerking / Note", "Rating (V/X)", "Camerarol"]
+            FIELD_OPTIONS = [t("field_ignore"), t("field_slate_scene"), t("field_take"),
+                             t("field_note"), t("field_rating"), t("field_camera_roll")]
 
             col_vars = []  # StringVar per kolom
             for ci2, hdr in enumerate(sample_headers):
@@ -2030,19 +2677,19 @@ class App:
                 tk.Label(col_f, text=hdr or f"(kolom {ci2+1})",
                          bg=SURFACE2, fg=ACCENT2,
                          font=("Helvetica Neue", 10, "bold")).pack(anchor="w")
-                var = tk.StringVar(value="— negeer —")
+                var = tk.StringVar(value=t("field_ignore"))
                 # Slim voorstel op basis van kolomnaam
                 h_low = hdr.lower()
                 if any(k in h_low for k in ("take", "tak")):
-                    var.set("Take")
+                    var.set(t("field_take"))
                 elif any(k in h_low for k in ("scene", "slate", "scèn", "scen")):
-                    var.set("Slate / Scene")
+                    var.set(t("field_slate_scene"))
                 elif any(k in h_low for k in ("opmerking", "note", "comment", "descr")):
-                    var.set("Opmerking / Note")
+                    var.set(t("field_note"))
                 elif any(k in h_low for k in ("rating", "circle", "beoord", "✓", "v/x")):
-                    var.set("Rating (V/X)")
+                    var.set(t("field_rating"))
                 elif any(k in h_low for k in ("camera", "roll", "tape", "kaart", "card")):
-                    var.set("Camerarol")
+                    var.set(t("field_camera_roll"))
                 col_vars.append(var)
                 om = tk.OptionMenu(col_f, var, *FIELD_OPTIONS)
                 om.config(bg=SURFACE2, fg=TEXT, activebackground=BORDER2,
@@ -2059,7 +2706,7 @@ class App:
             # Naam voor deze layout
             name_row = tk.Frame(dlg, bg=BG)
             name_row.pack(fill="x", padx=24, pady=(0, 12))
-            tk.Label(name_row, text="Naam voor dit formaat:",
+            tk.Label(name_row, text=t("layout_name_label"),
                      bg=BG, fg=MUTED, font=("Helvetica Neue", 11)).pack(
                 side="left", padx=(0, 10))
             name_var = tk.StringVar(value=fname.split(".")[0])
@@ -2077,18 +2724,18 @@ class App:
             def _confirm():
                 mapping = {}
                 FIELD_MAP = {
-                    "Slate / Scene":    "slate",
-                    "Take":             "take",
-                    "Opmerking / Note": "note",
-                    "Rating (V/X)":     "rating",
-                    "Camerarol":        "camera_roll",
+                    t("field_slate_scene"):  "slate",
+                    t("field_take"):         "take",
+                    t("field_note"):         "note",
+                    t("field_rating"):       "rating",
+                    t("field_camera_roll"):  "camera_roll",
                 }
                 for ci3, var in enumerate(col_vars):
                     field = FIELD_MAP.get(var.get())
                     if field:
                         mapping[field] = sample_headers[ci3]
                 if "take" not in mapping:
-                    status_lbl.config(fg=ERROR, text="Wijs minimaal de kolom 'Take' aan.")
+                    status_lbl.config(fg=ERROR, text=t("layout_no_take_col"))
                     return
                 layout = {
                     "fingerprint": _fingerprint_table(sample_headers),
@@ -2104,11 +2751,11 @@ class App:
                 dlg.destroy()
                 on_done(None)
 
-            _rounded_btn(btn_row, "Herken & verwerk", _confirm,
+            _rounded_btn(btn_row, t("btn_detect_process"), _confirm,
                          bg=AVID_B, hv=AVID_B_H, fg="white",
                          font=("Helvetica Neue", 11, "bold"),
                          px=20, py=7, r=10, pbg=BG).pack(side="left", padx=(0, 10))
-            _rounded_btn(btn_row, "Overslaan", _skip,
+            _rounded_btn(btn_row, t("btn_skip"), _skip,
                          bg=SURFACE2, hv=BORDER2, fg=MUTED,
                          font=("Helvetica Neue", 11),
                          px=16, py=7, r=10, pbg=BG).pack(side="left")
@@ -2116,42 +2763,18 @@ class App:
         # ── FAQ-venster ──────────────────────────────────────────────────────
         def _show_faq():
             FAQ = [
-                ("Hoe importeer ik het verwerkte ALE terug in Avid?",
-                 "Ga in Avid naar Preferences → User → Import → Shot Log. "
-                 "Kies onder Events de optie 'Merge events with known master clips'. "
-                 "Zo voegt Avid de comments en ratings toe aan je bestaande clips "
-                 "in plaats van nieuwe clips aan te maken."),
-                ("Welke PDF-formaten worden ondersteund?",
-                 "Continuity Bridge ondersteunt de meeste gangbare continuïteitsrapporten. "
-                 "Werkt jouw rapport niet goed? Stuur het op via "
-                 "support@studiomichielboesveldt.nl — we kijken ernaar."),
-                ("Verdwijnt mijn info na het maken van een multiclip?",
-                 "Dat kan. Importeer de ALE altijd vóórdat je multiclips aanmaakt. "
-                 "Avid draagt metadata niet automatisch over aan bestaande multiclips."),
-                ("Ik krijg een waarschuwing dat de app van een onbekende ontwikkelaar is.",
-                 "Dit is een standaard macOS-beveiliging voor apps buiten de App Store. "
-                 "Je kunt dit veilig negeren: ga naar Systeeminstellingen → Privacy en "
-                 "beveiliging → klik op 'Toch openen'. "
-                 "We werken aan een Apple Developer-registratie zodat deze melding verdwijnt."),
-                ("Werkt Continuity Bridge offline?",
-                 "Ja, volledig. Na activatie heeft de app geen internetverbinding nodig. "
-                 "Verwerking gebeurt lokaal op je Mac of pc."),
-                ("Kan ik de licentie op meerdere Macs gebruiken?",
-                 "Een licentie is gekoppeld aan één machine. Ga je over naar een nieuwe Mac? "
-                 "Verwijder de licentie eerst via Help → Verwijder licentie, en activeer "
-                 "daarna op je nieuwe Mac. Ben je dat vergeten? "
-                 "Mail naar support@studiomichielboesveldt.nl."),
-                ("Wat gebeurt er als mijn licentie verloopt?",
-                 "Na een jaar stopt de app met verwerken totdat je verlengt. "
-                 "Je bestanden blijven gewoon intact — er verdwijnt niets."),
-                ("Mijn clips worden niet herkend — wat nu?",
-                 "Controleer of de clipnamen in je ALE overeenkomen met de namen in het "
-                 "continuïteitsrapport. Kleine afwijkingen kunnen een mismatch geven. "
-                 "Neem contact op via support@studiomichielboesveldt.nl."),
+                (t("faq_q1"), t("faq_a1")),
+                (t("faq_q2"), t("faq_a2")),
+                (t("faq_q3"), t("faq_a3")),
+                (t("faq_q4"), t("faq_a4")),
+                (t("faq_q5"), t("faq_a5")),
+                (t("faq_q6"), t("faq_a6")),
+                (t("faq_q7"), t("faq_a7")),
+                (t("faq_q8"), t("faq_a8")),
             ]
 
             win = tk.Toplevel(self.root)
-            win.title("FAQ — Continuity Bridge")
+            win.title(t("wintitle_faq"))
             win.configure(bg=BG)
             win.resizable(False, True)
             win.geometry("560x620")
@@ -2184,10 +2807,10 @@ class App:
             win.bind("<Destroy>", lambda e: win.unbind_all("<MouseWheel>"))
 
             # ── Header ────────────────────────────────────────────────────────
-            tk.Label(inner, text="FAQ", bg=BG, fg=TEXT,
+            tk.Label(inner, text=t("faq_title"), bg=BG, fg=TEXT,
                      font=("Helvetica Neue", 16, "bold"),
                      anchor="w").pack(anchor="w", padx=22, pady=(20, 2))
-            tk.Label(inner, text="Veelgestelde vragen over Continuity Bridge",
+            tk.Label(inner, text=t("faq_subtitle"),
                      bg=BG, fg=MUTED, font=("Helvetica Neue", 10),
                      anchor="w").pack(anchor="w", padx=22, pady=(0, 14))
 
@@ -2237,7 +2860,7 @@ class App:
         # ── About-venster ────────────────────────────────────────────────────
         def _show_about():
             win = tk.Toplevel(self.root)
-            win.title("Over Continuity Bridge")
+            win.title(t("wintitle_about"))
             win.resizable(False, False)
             win.configure(bg=BG)
             win.geometry("340x280")
@@ -2253,9 +2876,9 @@ class App:
                 pass
             tk.Label(win, text="Continuity Bridge", bg=BG, fg=TEXT,
                      font=("Helvetica Neue", 15, "bold")).pack()
-            tk.Label(win, text=f"Versie {VERSION}", bg=BG, fg=MUTED,
+            tk.Label(win, text=t("about_version", ver=VERSION), bg=BG, fg=MUTED,
                      font=("Helvetica Neue", 11)).pack(pady=(2, 0))
-            tk.Label(win, text="by Michiel Boesveldt  © 2026", bg=BG, fg=MUTED,
+            tk.Label(win, text=t("about_author"), bg=BG, fg=MUTED,
                      font=("Helvetica Neue", 11)).pack(pady=(2, 4))
             _mail = tk.Label(win, text="support@studiomichielboesveldt.nl",
                              bg=BG, fg=AVID_B,
@@ -2264,7 +2887,7 @@ class App:
             _mail.pack(pady=(0, 14))
             _mail.bind("<Button-1>", lambda e: __import__('webbrowser').open(
                 "mailto:support@studiomichielboesveldt.nl"))
-            _rounded_btn(win, "OK", win.destroy,
+            _rounded_btn(win, t("btn_ok"), win.destroy,
                          bg=AVID_B, hv=AVID_B_H, fg="white",
                          font=("Helvetica Neue", 12, "bold"),
                          px=28, py=6, r=10, pbg=BG).pack()
@@ -2275,7 +2898,7 @@ class App:
         def _show_license_dialog(message="", block=False):
             """Toon dialoog voor serial invoer. block=True → app sluit bij annuleren."""
             dlg = tk.Toplevel(self.root)
-            dlg.title("Licentie activeren")
+            dlg.title(t("wintitle_license"))
             dlg.resizable(False, False)
             dlg.configure(bg=BG)
             dlg.geometry("400x420")
@@ -2290,7 +2913,7 @@ class App:
                 tk.Label(dlg, text=message, bg=BG, fg=ERROR,
                          font=("Helvetica Neue", 10)).pack(pady=(4, 0))
 
-            tk.Label(dlg, text="Naam", bg=BG, fg=MUTED,
+            tk.Label(dlg, text=t("lic_name_label"), bg=BG, fg=MUTED,
                      font=("Helvetica Neue", 10)).pack(pady=(10, 3))
             name_var = tk.StringVar()
             name_entry = tk.Entry(dlg, textvariable=name_var, bg=SURFACE2, fg=TEXT,
@@ -2300,7 +2923,7 @@ class App:
             name_entry.pack(ipady=6)
             name_entry.focus_set()
 
-            tk.Label(dlg, text="Serienummer", bg=BG, fg=MUTED,
+            tk.Label(dlg, text=t("lic_serial_label"), bg=BG, fg=MUTED,
                      font=("Helvetica Neue", 10)).pack(pady=(10, 3))
             serial_var = tk.StringVar()
             entry = tk.Entry(dlg, textvariable=serial_var, bg=SURFACE2, fg=TEXT,
@@ -2323,11 +2946,10 @@ class App:
                 entered_trunc = entered_name.encode('utf-8')[:8].ljust(8, b'\x00') \
                                             .rstrip(b'\x00').decode('utf-8', errors='replace')
                 if entered_trunc.lower() != serial_name.lower():
-                    status_lbl.config(fg=ERROR,
-                        text="✗ Naam komt niet overeen met licentie.")
+                    status_lbl.config(fg=ERROR, text=t("lic_name_mismatch"))
                     return
                 # Server-side activatiecheck
-                status_lbl.config(fg=MUTED, text="Activatie verifiëren…")
+                status_lbl.config(fg=MUTED, text=t("lic_verify_msg"))
                 _act_cv.config(state="disabled")
                 def _do_server_check():
                     try:
@@ -2353,9 +2975,7 @@ class App:
                     def _finish():
                         _act_cv.config(state="normal")
                         if not server_ok and server_reason == "al_gebonden":
-                            status_lbl.config(fg=ERROR,
-                                text="✗ Serial al geactiveerd op een andere machine.\n"
-                                     "Neem contact op met support@studiomichielboesveldt.nl")
+                            status_lbl.config(fg=ERROR, text=t("lic_already_bound"))
                             return
                         _license_save(serial_var.get())
                         self._license_expiry = expiry
@@ -2373,7 +2993,7 @@ class App:
 
             dlg.protocol("WM_DELETE_WINDOW", _cancel)
 
-            _act_cv = _rounded_btn(dlg, "Activeer", _activate,
+            _act_cv = _rounded_btn(dlg, t("lic_btn_activate"), _activate,
                                     bg=AVID_B, hv=AVID_B_H, fg="white",
                                     font=("Helvetica Neue", 12, "bold"),
                                     px=24, py=7, r=10, pbg=BG)
@@ -2383,13 +3003,13 @@ class App:
 
             if block:
                 _SHOP_URL = "https://payment-links.mollie.com/payment/NesoriUjVmqbLs84L5mrP"
-                _shop_cv  = _rounded_btn(dlg, "🛒  Koop licentie",
+                _shop_cv  = _rounded_btn(dlg, t("lic_btn_buy"),
                                          lambda: __import__('webbrowser').open(_SHOP_URL),
                                          bg=SUCCESS, hv="#3ab870", fg="#0A2A10",
                                          font=("Helvetica Neue", 11, "bold"),
                                          px=18, py=6, r=10, pbg=BG)
                 _shop_cv.pack(pady=(12, 0))
-                tk.Label(dlg, text="Na betaling ontvang je serial per mail.",
+                tk.Label(dlg, text=t("lic_buy_after"),
                          bg=BG, fg=MUTED, font=("Helvetica Neue", 9)).pack(pady=(6, 0))
                 mail_lbl = tk.Label(dlg, text="support@studiomichielboesveldt.nl",
                                     bg=BG, fg=AVID_B,
@@ -2410,12 +3030,12 @@ class App:
                 def _render():
                     if ok:
                         win = tk.Toplevel(self.root)
-                        win.title("Licentie")
+                        win.title(t("wintitle_license_info"))
                         win.resizable(False, False)
                         win.configure(bg=BG)
                         win.geometry("340x230")
                         win.grab_set(); win.lift(); win.focus_force()
-                        tk.Label(win, text="✓  Actief", bg=BG, fg=SUCCESS,
+                        tk.Label(win, text=t("lic_active_label"), bg=BG, fg=SUCCESS,
                                  font=("Helvetica Neue", 13, "bold")).pack(pady=(20, 4))
                         tk.Label(win, text=name, bg=BG, fg=TEXT,
                                  font=("Helvetica Neue", 14, "bold")).pack()
@@ -2430,7 +3050,7 @@ class App:
                         _sl.pack(pady=(0, 10))
                         _sl.bind("<Button-1>", lambda e: __import__('webbrowser').open(
                             "mailto:support@studiomichielboesveldt.nl"))
-                        _rounded_btn(win, "OK", win.destroy,
+                        _rounded_btn(win, t("btn_ok"), win.destroy,
                                      bg=AVID_B, hv=AVID_B_H, fg="white",
                                      font=("Helvetica Neue", 12, "bold"),
                                      px=28, py=6, r=10, pbg=BG).pack()
@@ -2442,20 +3062,16 @@ class App:
                             _license_delete()
                             self._license_expiry = None
                             _show_license_dialog(message=msg, block=True)
-                        elif tk.messagebox.askyesno("Licentie", f"{msg}\n\nNieuw serienummer invoeren?"):
+                        elif tk.messagebox.askyesno(t("wintitle_lic_question"), f"{msg}\n\n{t('lic_ask_new_serial')}"):
                             _show_license_dialog()
                 self.root.after(0, _render)
             threading.Thread(target=_do_show, daemon=True).start()
 
         def _remove_license():
-            if tk.messagebox.askyesno("Licentie verwijderen",
-                    "Licentie verwijderen van deze Mac?\n\n"
-                    "Je moet daarna een nieuw serienummer invoeren."):
+            if tk.messagebox.askyesno(t("wintitle_remove_lic"), t("lic_remove_confirm")):
                 _license_delete()
                 self._license_expiry = None
-                _show_license_dialog(
-                    message="Licentie verwijderd. Voer een nieuw serienummer in.",
-                    block=True)
+                _show_license_dialog(message=t("lic_removed_msg"), block=True)
 
         # ── Verkochte licenties beheren ──────────────────────────────────────
         _MGR_TOKEN_FILE = _LIC_DIR / "mgr_token"
@@ -2523,7 +3139,7 @@ class App:
         def _show_license_manager():
             """Beheerdersvenster: toon alle verkochte licenties, intrekken mogelijk."""
             win = tk.Toplevel(self.root)
-            win.title("Verkochte licenties")
+            win.title(t("wintitle_sold"))
             win.configure(bg=BG)
             win.geometry("860x540")
             win.grab_set(); win.lift(); win.focus_force()
@@ -2531,14 +3147,14 @@ class App:
             # Token-balk bovenaan
             hdr = tk.Frame(win, bg=SURFACE, pady=8, padx=14)
             hdr.pack(fill="x")
-            tk.Label(hdr, text="GitHub manager token:", bg=SURFACE, fg=MUTED,
+            tk.Label(hdr, text=t("mgr_token_label"), bg=SURFACE, fg=MUTED,
                      font=("Helvetica Neue", 11)).pack(side="left")
             tok_var = tk.StringVar(value=_mgr_token_load())
             tok_entry = tk.Entry(hdr, textvariable=tok_var, show="•", width=44,
                                  bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
                                  relief="flat", font=("Menlo", 10), bd=4)
             tok_entry.pack(side="left", padx=(8, 6))
-            _mgr_token_save_btn = tk.Button(hdr, text="Opslaan & laden",
+            _mgr_token_save_btn = tk.Button(hdr, text=t("mgr_btn_save_load"),
                                             bg=AVID_B, fg="white",
                                             font=("Helvetica Neue", 10, "bold"),
                                             relief="flat", bd=0, cursor="hand2",
@@ -2582,7 +3198,7 @@ class App:
             # Intrek-knop onderaan
             btn_row = tk.Frame(win, bg=BG)
             btn_row.pack(fill="x", padx=14, pady=(0, 12))
-            revoke_btn = tk.Button(btn_row, text="⊘  Intrek geselecteerde licentie",
+            revoke_btn = tk.Button(btn_row, text=t("mgr_revoke_btn"),
                                    bg=ERROR, fg="white",
                                    font=("Helvetica Neue", 11, "bold"),
                                    relief="flat", bd=0, cursor="hand2",
@@ -2597,10 +3213,10 @@ class App:
             def _load_data():
                 token = tok_var.get().strip()
                 if not token:
-                    status_lbl.config(text="Voer je GitHub manager token in.", fg=ERROR)
+                    status_lbl.config(text=t("mgr_enter_token"), fg=ERROR)
                     return
                 _mgr_token_save(token)
-                status_lbl.config(text="Laden…", fg=MUTED)
+                status_lbl.config(text=t("mgr_loading"), fg=MUTED)
                 revoke_btn.config(state="disabled")
 
                 def _fetch():
@@ -2618,11 +3234,11 @@ class App:
                                     _, expiry, _, _ = _serial_verify(e.get("serial",""))
                                     exp_str = expiry.strftime("%d-%m-%Y") if expiry else "?"
                                     if e.get("revoked"):
-                                        status = "Ingetrokken"
+                                        status = t("mgr_status_revoked")
                                     elif expiry and today >= expiry:
-                                        status = "Verlopen"
+                                        status = t("mgr_status_expired")
                                     else:
-                                        status = "Geldig"
+                                        status = t("mgr_status_valid")
                                 except Exception:
                                     exp_str = "?"
                                     status  = "?"
@@ -2640,7 +3256,7 @@ class App:
                         self.root.after(0, _render)
                     except Exception as ex:
                         self.root.after(0, lambda: status_lbl.config(
-                            text=f"Fout: {ex}", fg=ERROR))
+                            text=t("mgr_fetch_err", err=str(ex)), fg=ERROR))
                 threading.Thread(target=_fetch, daemon=True).start()
 
             def _on_select(e):
@@ -2653,25 +3269,23 @@ class App:
                 vals = tree.item(sel[0])["values"]
                 serial_str = vals[2]
                 naam = vals[0]
-                if not tk.messagebox.askyesno("Licentie intrekken",
-                        f"Licentie van {naam} intrekken?\n\n"
-                        f"{serial_str}\n\n"
-                        "Dit kan niet ongedaan worden gemaakt."):
+                if not tk.messagebox.askyesno(t("wintitle_revoke"),
+                        t("mgr_revoke_confirm", naam=naam, serial=serial_str)):
                     return
                 token = tok_var.get().strip()
-                status_lbl.config(text="Licentie intrekken…", fg=MUTED)
+                status_lbl.config(text=t("mgr_revoking"), fg=MUTED)
                 serial_clean = serial_str.upper().replace(" ", "")
 
                 def _revoke():
                     try:
                         _revoke_serial_on_github(token, serial_clean)
                         self.root.after(0, lambda: (
-                            status_lbl.config(text=f"Ingetrokken: {serial_clean[:16]}…", fg=SUCCESS),
+                            status_lbl.config(text=t("mgr_revoked_ok", serial=serial_clean[:16]), fg=SUCCESS),
                             _load_data()
                         ))
                     except Exception as ex:
                         self.root.after(0, lambda: status_lbl.config(
-                            text=f"Fout bij intrekken: {ex}", fg=ERROR))
+                            text=t("mgr_revoke_err", err=str(ex)), fg=ERROR))
                 threading.Thread(target=_revoke, daemon=True).start()
 
             _mgr_token_save_btn.config(command=_load_data)
@@ -2717,24 +3331,24 @@ class App:
 
             # App-menu (macOS apple-menu)
             _appmenu = tk.Menu(_menubar, name='apple', tearoff=False)
-            _appmenu.add_command(label='Over Continuity Bridge', command=_show_about)
+            _appmenu.add_command(label=t('menu_about'), command=_show_about)
             _appmenu.add_separator()
-            _appmenu.add_command(label='Voorkeuren…', command=self._show_prefs,
+            _appmenu.add_command(label=t('menu_prefs'), command=self._show_prefs,
                                  accelerator='Command+,')
             _appmenu.add_separator()
-            _appmenu.add_command(label='Beëindig Continuity Bridge',
+            _appmenu.add_command(label=t('menu_quit'),
                                  command=self.root.quit,
                                  accelerator='Command+Q')
             _menubar.add_cascade(label='Continuity Bridge', menu=_appmenu)
 
             # Help-menu
             _helpmenu = tk.Menu(_menubar, tearoff=False)
-            _helpmenu.add_command(label='Licentie…', command=_show_license_info)
-            _helpmenu.add_command(label='Verwijder licentie…', command=_remove_license)
+            _helpmenu.add_command(label=t('menu_license'), command=_show_license_info)
+            _helpmenu.add_command(label=t('menu_remove_license'), command=_remove_license)
             _helpmenu.add_separator()
-            _helpmenu.add_command(label='FAQ…', command=_show_faq)
+            _helpmenu.add_command(label=t('menu_faq'), command=_show_faq)
             _helpmenu.add_separator()
-            _helpmenu.add_command(label='Check voor updates…',
+            _helpmenu.add_command(label=t('menu_check_updates'),
                                   command=lambda: _check_updates(silent=False))
             _menubar.add_cascade(label='Help', menu=_helpmenu)
 
@@ -2783,7 +3397,7 @@ class App:
         anchor = parent_win or self.root
 
         dlg = tk.Toplevel(anchor)
-        dlg.title("Kies kolom")
+        dlg.title(t("wintitle_col_pick"))
         dlg.resizable(False, False)
         dlg.configure(bg=BG)
         dlg.grab_set()
@@ -2801,7 +3415,7 @@ class App:
                 all_items.append((c, False, c))
 
         # Zoekbalk
-        tk.Label(dlg, text="Zoek:", bg=BG, fg=MUTED,
+        tk.Label(dlg, text=t("col_pick_search"), bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 11)).pack(anchor="w", padx=16, pady=(14, 4))
         search_var = tk.StringVar()
         ent = tk.Entry(dlg, textvariable=search_var, width=30,
@@ -2849,7 +3463,7 @@ class App:
         tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x", padx=16)
         own_frame = tk.Frame(dlg, bg=BG)
         own_frame.pack(fill="x", padx=16, pady=8)
-        tk.Label(own_frame, text="Of typ eigen naam:", bg=BG, fg=MUTED,
+        tk.Label(own_frame, text=t("col_pick_own_label"), bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 10)).pack(side="left")
         own_var = tk.StringVar()
         own_ent = tk.Entry(own_frame, textvariable=own_var, width=18,
@@ -2874,10 +3488,10 @@ class App:
 
         btn_row = tk.Frame(dlg, bg=BG)
         btn_row.pack(anchor="e", padx=16, pady=(0, 14))
-        _rounded_btn(btn_row, "Annuleer", _cancel,
+        _rounded_btn(btn_row, t("btn_cancel"), _cancel,
                      bg=SURFACE2, hv=SURFACE, fg=TEXT,
                      font=("Helvetica Neue", 11), px=16, py=6, r=8, pbg=BG).pack(side="left", padx=(0, 8))
-        _rounded_btn(btn_row, "Kies", lambda: _confirm(
+        _rounded_btn(btn_row, t("btn_pick"), lambda: _confirm(
                          _lb_map[lb.curselection()[0]] if lb.curselection() and _lb_map[lb.curselection()[0]] else None),
                      bg=AVID_B, hv="#2a6fbd", fg="white",
                      font=("Helvetica Neue", 11, "bold"), px=16, py=6, r=8, pbg=BG).pack(side="left")
@@ -2891,7 +3505,7 @@ class App:
     def _show_prefs(self):
         """Voorkeuren-venster (modaal)."""
         win = tk.Toplevel(self.root)
-        win.title("Voorkeuren")
+        win.title(t("wintitle_prefs"))
         win.resizable(False, False)
         win.configure(bg=BG)
         win.grab_set()
@@ -2900,7 +3514,7 @@ class App:
         ROW = 32
 
         # ── Titel ──────────────────────────────────────────────────────────
-        tk.Label(win, text="Voorkeuren", bg=BG, fg=TEXT,
+        tk.Label(win, text=t("prefs_title"), bg=BG, fg=TEXT,
                  font=("Helvetica Neue", 15, "bold")).pack(anchor="w", padx=PAD, pady=(PAD, 14))
 
         tk.Frame(win, bg=BORDER, height=1).pack(fill="x", padx=PAD)
@@ -2925,7 +3539,7 @@ class App:
 
         # Stijl voor alle comboboxen in dit venster
         style = ttk.Style()
-        CUSTOM = "Kies kolom…"
+        CUSTOM = t("col_pick_placeholder")
 
         def _cb(parent, var, values):
             all_values = list(values) + [CUSTOM]
@@ -2939,10 +3553,10 @@ class App:
             cb.bind("<<ComboboxSelected>>", _on_select)
             return cb
 
-        _section_hdr(body, "PER TAKE")
+        _section_hdr(body, t("prefs_section_per_take"))
 
         # Notes: checkbox + "→" + kolom-dropdown
-        r2 = _row("Notes")
+        r2 = _row(t("prefs_notes"))
         tk.Checkbutton(r2, variable=self.write_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
@@ -2952,7 +3566,7 @@ class App:
         _cb(r2, self.notes_col, self.NOTES_COLS)
 
         # Rating: checkbox + "→" + kolom-dropdown + format (sterren/***/cijfer)
-        r1 = _row("Rating")
+        r1 = _row(t("prefs_rating"))
         tk.Checkbutton(r1, variable=self.write_rating,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
@@ -2960,17 +3574,24 @@ class App:
         tk.Label(r1, text="→", bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
         _cb(r1, self.rating_col, self.RATING_COLS)
-        tk.Label(r1, text="sterren als:", bg=BG, fg=MUTED,
+        tk.Label(r1, text=t("prefs_stars_as"), bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 10)).pack(side="left", padx=(10, 4))
-        ttk.Combobox(r1, textvariable=self.star_format,
-                     values=["sterren (***)", "cijfer (1-5)"],
-                     state="readonly", width=13,
+        _STAR_DISPLAY = [t("prefs_stars_stars"), t("prefs_stars_number"), t("prefs_stars_letter")]
+        _STAR_TO_CODE = {t("prefs_stars_stars"): "sterren", t("prefs_stars_number"): "cijfer", t("prefs_stars_letter"): "letters"}
+        _CODE_TO_STAR = {"sterren": t("prefs_stars_stars"), "cijfer": t("prefs_stars_number"), "letters": t("prefs_stars_letter")}
+        _star_display = tk.StringVar(value=_CODE_TO_STAR.get(self.star_format.get(), _STAR_DISPLAY[0]))
+        _star_cb = ttk.Combobox(r1, textvariable=_star_display,
+                     values=_STAR_DISPLAY, state="readonly", width=13,
                      style="CB.TCombobox",
-                     font=("Helvetica Neue", 11)).pack(side="left")
+                     font=("Helvetica Neue", 11))
+        _star_cb.pack(side="left")
+        def _on_star_fmt(e):
+            self.star_format.set(_STAR_TO_CODE.get(_star_display.get(), "sterren"))
+        _star_cb.bind("<<ComboboxSelected>>", _on_star_fmt)
 
         # PU: checkbox + "→" + kolom-dropdown + voor/achter
         PU_COLS = ["Auto", "Comment", "Comments", "Notes", "Take_Notes"]
-        r5 = _row("Schrijf (PU)")
+        r5 = _row(t("prefs_write_pu"))
         tk.Checkbutton(r5, variable=self.write_pu_in_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
@@ -2978,16 +3599,24 @@ class App:
         tk.Label(r5, text="→", bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
         _cb(r5, self.pu_col, PU_COLS)
-        tk.Label(r5, text="positie:", bg=BG, fg=MUTED,
+        tk.Label(r5, text=t("prefs_position"), bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 10)).pack(side="left", padx=(8, 4))
-        ttk.Combobox(r5, textvariable=self.pu_position,
-                     values=["voor", "achter"], state="readonly", width=7,
+        _POS_DISPLAY = [t("prefs_pos_before"), t("prefs_pos_after")]
+        _POS_TO_CODE = {t("prefs_pos_before"): "voor", t("prefs_pos_after"): "achter"}
+        _CODE_TO_POS = {"voor": t("prefs_pos_before"), "achter": t("prefs_pos_after")}
+        _pu_pos_display = tk.StringVar(value=_CODE_TO_POS.get(self.pu_position.get(), _POS_DISPLAY[0]))
+        _pu_pos_cb = ttk.Combobox(r5, textvariable=_pu_pos_display,
+                     values=_POS_DISPLAY, state="readonly", width=7,
                      style="CB.TCombobox",
-                     font=("Helvetica Neue", 11)).pack(side="left")
+                     font=("Helvetica Neue", 11))
+        _pu_pos_cb.pack(side="left")
+        def _on_pu_pos(e):
+            self.pu_position.set(_POS_TO_CODE.get(_pu_pos_display.get(), "voor"))
+        _pu_pos_cb.bind("<<ComboboxSelected>>", _on_pu_pos)
 
         # AFG: checkbox + "→" + kolom-dropdown + voor/achter
         AFG_COLS = ["Auto", "Comment", "Comments", "Notes", "Take_Notes"]
-        r6 = _row("Schrijf (AFG)")
+        r6 = _row(t("prefs_write_afg"))
         tk.Checkbutton(r6, variable=self.write_afg_in_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
@@ -2995,12 +3624,17 @@ class App:
         tk.Label(r6, text="→", bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
         _cb(r6, self.afg_col, AFG_COLS)
-        tk.Label(r6, text="positie:", bg=BG, fg=MUTED,
+        tk.Label(r6, text=t("prefs_position"), bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 10)).pack(side="left", padx=(8, 4))
-        ttk.Combobox(r6, textvariable=self.afg_position,
-                     values=["voor", "achter"], state="readonly", width=7,
+        _afg_pos_display = tk.StringVar(value=_CODE_TO_POS.get(self.afg_position.get(), _POS_DISPLAY[0]))
+        _afg_pos_cb = ttk.Combobox(r6, textvariable=_afg_pos_display,
+                     values=_POS_DISPLAY, state="readonly", width=7,
                      style="CB.TCombobox",
-                     font=("Helvetica Neue", 11)).pack(side="left")
+                     font=("Helvetica Neue", 11))
+        _afg_pos_cb.pack(side="left")
+        def _on_afg_pos(e):
+            self.afg_position.set(_POS_TO_CODE.get(_afg_pos_display.get(), "voor"))
+        _afg_pos_cb.bind("<<ComboboxSelected>>", _on_afg_pos)
 
         body2 = tk.Frame(win, bg=BG)
         body2.pack(fill="x", padx=PAD)
@@ -3017,7 +3651,7 @@ class App:
         GEN_COLS    = ["Camera_Notes", "Opmerkingen", "Continuity_Notes", "Script_Notes"]
 
         def _cb2(parent, var, values):
-            CUSTOM = "Kies kolom…"
+            CUSTOM = t("col_pick_placeholder")
             cb = ttk.Combobox(parent, textvariable=var, values=list(values) + [CUSTOM],
                               state="readonly", width=16,
                               style="CB.TCombobox", font=("Helvetica Neue", 11))
@@ -3026,9 +3660,9 @@ class App:
                     lambda e: self._pick_column(var, win) if var.get() == CUSTOM else None)
             return cb
 
-        _section_hdr(body2, "ALGEMENE OPMERKINGEN PER SLATE")
+        _section_hdr(body2, t("prefs_section_general"))
 
-        r7 = _row2("Sound Notes")
+        r7 = _row2(t("prefs_sound_notes"))
         tk.Checkbutton(r7, variable=self.write_sound_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
@@ -3037,7 +3671,7 @@ class App:
                  font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
         _cb2(r7, self.sound_notes_col, SOUND_COLS)
 
-        r8 = _row2("Camera Notes")
+        r8 = _row2(t("prefs_camera_notes"))
         tk.Checkbutton(r8, variable=self.write_camera_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
@@ -3046,7 +3680,7 @@ class App:
                  font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
         _cb2(r8, self.camera_notes_col, CAMERA_COLS)
 
-        r9 = _row2("Opmerkingen")
+        r9 = _row2(t("prefs_opmerkingen"))
         tk.Checkbutton(r9, variable=self.write_general_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
@@ -3063,7 +3697,7 @@ class App:
 
         r4 = tk.Frame(body3, bg=BG, height=ROW)
         r4.pack(fill="x", pady=4)
-        tk.Label(r4, text="Uitvoermap", bg=BG, fg=MUTED,
+        tk.Label(r4, text=t("prefs_output_dir"), bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 11), width=18, anchor="w").pack(side="left")
         out_entry = tk.Entry(r4, textvariable=self.output_dir, width=22,
                              bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
@@ -3073,20 +3707,20 @@ class App:
         out_entry.pack(side="left", ipady=3)
 
         def _pick_dir():
-            d = filedialog.askdirectory(title="Kies uitvoermap",
+            d = filedialog.askdirectory(title=t("dlg_pick_dir"),
                                         initialdir=self.output_dir.get() or Path.home())
             if d:
                 self.output_dir.set(d)
-        _rounded_btn(r4, "Kies…", _pick_dir,
+        _rounded_btn(r4, t("btn_choose_dir"), _pick_dir,
                      bg=SURFACE2, hv=BORDER, fg=TEXT,
                      font=("Helvetica Neue", 11), px=10, py=3, r=6,
                      pbg=BG).pack(side="left", padx=(4, 0))
-        tk.Label(r4, text="(leeg = zelfde map als ALE)", bg=BG, fg=MUTED,
+        tk.Label(r4, text=t("prefs_output_dir_hint"), bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 10)).pack(side="left", padx=(8, 0))
 
         r4b = tk.Frame(body3, bg=BG, height=ROW)
         r4b.pack(fill="x", pady=4)
-        tk.Label(r4b, text="Bestandsnaam", bg=BG, fg=MUTED,
+        tk.Label(r4b, text=t("prefs_filename"), bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 11), width=18, anchor="w").pack(side="left")
         tk.Label(r4b, text="{originele naam}", bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 10)).pack(side="left")
@@ -3100,8 +3734,34 @@ class App:
 
         tk.Frame(win, bg=BORDER, height=1).pack(fill="x", padx=PAD, pady=(8, 0))
 
+        # ── Taal / Language / Sprache ─────────────────────────────────────────
+        body_lang = tk.Frame(win, bg=BG)
+        body_lang.pack(fill="x", padx=PAD, pady=(8, 0))
+        r_lang = tk.Frame(body_lang, bg=BG, height=32)
+        r_lang.pack(fill="x", pady=3)
+        tk.Label(r_lang, text=t("prefs_lang_label"), bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11), width=24, anchor="w").pack(side="left")
+        _LANG_OPTIONS = ["🇳🇱 Nederlands", "🇬🇧 English", "🇩🇪 Deutsch"]
+        _LANG_CODES   = {"🇳🇱 Nederlands": "nl", "🇬🇧 English": "en", "🇩🇪 Deutsch": "de"}
+        _LANG_LABELS  = {v: k for k, v in _LANG_CODES.items()}
+        _lang_display = tk.StringVar(value=_LANG_LABELS.get(self.language.get(), "🇳🇱 Nederlands"))
+        lang_cb = ttk.Combobox(r_lang, textvariable=_lang_display,
+                               values=_LANG_OPTIONS, state="readonly", width=16,
+                               style="CB.TCombobox", font=("Helvetica Neue", 11))
+        lang_cb.pack(side="left")
+        lang_hint = tk.Label(r_lang, text=t("prefs_lang_restart_hint"),
+                             bg=BG, fg=MUTED, font=("Helvetica Neue", 9))
+        lang_hint.pack(side="left", padx=(10, 0))
+        def _on_lang_change(e):
+            code = _LANG_CODES.get(_lang_display.get(), "nl")
+            self.language.set(code)
+            self._save_prefs_all()
+        lang_cb.bind("<<ComboboxSelected>>", _on_lang_change)
+
+        tk.Frame(win, bg=BORDER, height=1).pack(fill="x", padx=PAD, pady=(8, 0))
+
         # Sluit-knop
-        btn = _rounded_btn(win, "Sluit", win.destroy,
+        btn = _rounded_btn(win, t("btn_close"), win.destroy,
                            bg=AVID_B, hv="#2a6fbd", fg="white",
                            font=("Helvetica Neue", 12, "bold"),
                            px=24, py=8, r=10, pbg=BG)
@@ -3405,14 +4065,14 @@ class App:
             tk.Label(row, text=text.upper(), bg=BG, fg=MUTED,
                      font=("Helvetica Neue", 9, "bold"), anchor="w").pack(side="left")
 
-        _section_label(body, 1, "Avid Log Exchange file (ALE)")
+        _section_label(body, 1, t("section_ale"))
         self._multi_file_widget(body, self.ale_paths, "ALE").pack(fill="x", pady=(0, 14))
 
-        _section_label(body, 2, "Continuïteitsrapport (PDF)")
+        _section_label(body, 2, t("section_pdf"))
         self._multi_file_widget(body, self.pdf_paths, "PDF").pack(fill="x", pady=(0, 14))
 
         # ── Notes-kolom keuze ─────────────────────────────────────────────────
-        _section_label(body, 3, "Notes → kolom")
+        _section_label(body, 3, t("section_notes_col"))
 
         opts = tk.Frame(body, bg=BG)
         opts.pack(fill="x", pady=(0, 0))
@@ -3440,7 +4100,7 @@ class App:
         self.root.option_add("*TCombobox*Listbox.relief",           "flat")
         self.root.option_add("*TCombobox*Listbox.borderWidth",      "0")
 
-        PICK = "Kies kolom…"
+        PICK = t("col_pick_placeholder")
 
         def _make_col_values(recent_key):
             base    = self.COMMON_COLS
@@ -3484,7 +4144,7 @@ class App:
         hint_row.pack(fill="x", pady=(12, 12))
 
         hint_lbl = tk.Label(hint_row,
-                            text="⚙  Meer instellingen in Voorkeuren  (⌘,)",
+                            text=t("hint_more_settings"),
                             bg=BG, fg=MUTED,
                             font=("Helvetica Neue", 10), cursor="arrow", anchor="w")
         hint_lbl.pack(side="left", fill="x", expand=True)
@@ -3502,7 +4162,7 @@ class App:
             self.log_box.delete("1.0", "end")
             self.log_box.config(state="disabled")
 
-        clear_cv = _rounded_btn(hint_row, "↺  Wis alles", _clear_all,
+        clear_cv = _rounded_btn(hint_row, t("btn_clear_all"), _clear_all,
                                 bg=SURFACE2, hv=BORDER, fg=MUTED,
                                 font=("Helvetica Neue", 10), px=10, py=3, r=8, pbg=BG)
         clear_cv.pack(side="right")
@@ -3518,7 +4178,9 @@ class App:
         _BTN_TL = "#B040FF"   # diagonaal links-boven: fel violet
         _BTN_BR = "#5814C0"   # diagonaal rechts-onder: diep paars
 
-        def _draw_verwerk(label="✦  Verwerk", darken=0.0, disabled=False):
+        def _draw_verwerk(label=None, darken=0.0, disabled=False):
+            if label is None:
+                label = t("btn_process")
             w = self.btn.winfo_width()
             if w < 2: return
             if disabled:
@@ -3530,7 +4192,7 @@ class App:
 
         def _on_verwerk_resize(e):
             if self._btn_enabled: _draw_verwerk()
-            else:                 _draw_verwerk("Bezig…", disabled=True)
+            else:                 _draw_verwerk(t("btn_busy"), disabled=True)
 
         self.btn.bind("<Configure>", _on_verwerk_resize)
 
@@ -3653,13 +4315,13 @@ class App:
         status_row.pack(fill="x")
 
         status_lbl = tk.Label(status_row,
-                              text="Sleep bestanden hier of voeg toe…",
+                              text=t("file_drop_hint"),
                               bg=SURFACE, fg=MUTED,
                               font=("Helvetica Neue", 10), anchor="w")
         status_lbl.pack(side="left", fill="x", expand=True)
 
         pick_fn = self._pick_ale if file_type == "ALE" else self._pick_pdf
-        add_cv  = _rounded_btn(status_row, "Kies…", pick_fn,
+        add_cv  = _rounded_btn(status_row, t("btn_choose"), pick_fn,
                                bg=SURFACE2, hv=BORDER, fg=TEXT,
                                font=("Helvetica Neue", 10), px=10, py=3, r=6,
                                pbg=SURFACE)
@@ -3672,12 +4334,12 @@ class App:
             n = len(paths_list)
 
             if n == 0:
-                status_lbl.config(text="Sleep bestanden hier of voeg toe…")
+                status_lbl.config(text=t("file_drop_hint"))
                 list_host.pack_forget()
                 sep_line.pack_forget()
             else:
-                word = "bestand" if n == 1 else "bestanden"
-                status_lbl.config(text=f"{n} {word} geselecteerd")
+                word = t("file_word_single") if n == 1 else t("file_word_plural")
+                status_lbl.config(text=t("file_n_selected", n=n, word=word))
 
                 for i, p in enumerate(paths_list):
                     row = tk.Frame(list_frame, bg=SURFACE, height=_ROW_H)
@@ -3757,12 +4419,12 @@ class App:
         if icon:
             icon.pack(side="left", padx=(0, 12))
 
-        lbl = tk.Label(inner, text="Sleep bestand hier of kies…", bg=SURFACE, fg=MUTED,
+        lbl = tk.Label(inner, text=t("file_drop_hint"), bg=SURFACE, fg=MUTED,
                        font=("Helvetica Neue", 11), anchor="w", cursor="arrow")
         lbl.pack(side="left", fill="x", expand=True)
         setattr(self, lbl_attr, lbl)
 
-        kies_cv = _rounded_btn(inner, "Kies…", cmd,
+        kies_cv = _rounded_btn(inner, t("btn_choose"), cmd,
                                bg=SURFACE2, hv=BORDER, fg=TEXT,
                                font=("Helvetica Neue", 10), px=10, py=4, r=8, pbg=SURFACE)
         kies_cv.pack(side="right")
@@ -3799,7 +4461,7 @@ class App:
             self.root.after(0, self._refresh_ale)
 
     def _pick_pdf(self):
-        paths = filedialog.askopenfilenames(title="Kies PDF bestanden",
+        paths = filedialog.askopenfilenames(title=t("dlg_pick_pdf"),
                                             filetypes=[("Alle bestanden", "*.*")])
         added = 0
         for p in paths:
@@ -3811,7 +4473,7 @@ class App:
             self._refresh_pdf()
 
     def _pick_ale(self):
-        paths = filedialog.askopenfilenames(title="Kies ALE bestanden",
+        paths = filedialog.askopenfilenames(title=t("dlg_pick_ale"),
                                             filetypes=[("Alle bestanden", "*.*")])
         added = 0
         for p in paths:
@@ -3824,14 +4486,14 @@ class App:
 
     def _run(self):
         if not self._license_expiry:
-            self.log("Geen geldige licentie. Activeer via Continuity Bridge → Licentie…", "err")
+            self.log(t("err_no_license"), "err")
             return
         if not self.pdf_paths:
-            self.log("Kies eerst een of meer PDF bestanden.", "err"); return
+            self.log(t("err_no_pdf"), "err"); return
         if not self.ale_paths:
-            self.log("Kies eerst een of meer ALE bestanden.", "err"); return
+            self.log(t("err_no_ale"), "err"); return
         self._btn_enabled = False
-        self._draw_verwerk("Bezig…", disabled=True)
+        self._draw_verwerk(t("btn_busy"), disabled=True)
         threading.Thread(target=self._process, daemon=True).start()
 
     def _process(self):
@@ -3881,12 +4543,27 @@ class App:
                                      afg_position=self.afg_position.get(),
                                      general_notes_col=(self.general_notes_col.get()
                                                         if self.write_general_notes.get() else "Uit"),
-                                     star_format=("sterren" if "sterren" in self.star_format.get()
-                                                  else "cijfer"))
+                                     star_format=self.star_format.get())
                 stem    = Path(ale_p).stem
                 out_dir = Path(_out_dir) if _out_dir else Path(ale_p).parent
                 out     = out_dir / f"{stem}{_out_suffix}.ALE"
-                result_bytes = result.encode("utf-8")
+                # ALE verwacht Latin-1; emoji/symbolen → leesbare tekst
+                def _ale_safe(s):
+                    out = []
+                    for c in s:
+                        if '︀' <= c <= '️':  # variation selectors weggooien
+                            continue
+                        try:
+                            c.encode('latin-1')
+                            out.append(c)
+                        except UnicodeEncodeError:
+                            name = _ud.name(c, '').lower()
+                            # Versimpel veelvoorkomende namen
+                            name = re.sub(r'\b(heavy|black|white|red|medium|large|small)\b\s*', '', name).strip()
+                            name = name.replace(' sign', '').replace(' mark', '').strip()
+                            out.append(f'({name})')
+                    return ''.join(out)
+                result_bytes = _ale_safe(result).encode("latin-1", errors="replace")
                 try:
                     out_dir.mkdir(parents=True, exist_ok=True)
                     out.write_bytes(result_bytes)
@@ -3894,10 +4571,10 @@ class App:
                     out = Path.home() / "Desktop" / f"{stem}{_out_suffix}.ALE"
                     out.write_bytes(result_bytes)
                 out_paths.append(out)
-                self.log(f"Opgeslagen  —  {out.name}", "ok")
+                self.log(t("log_saved", name=out.name), "ok")
 
             n_ale = len(out_paths)
-            self.log(f"✓  Klaar  —  {n_ale} ALE bestand{'en' if n_ale != 1 else ''} opgeslagen", "ok")
+            self.log(t("log_done_one") if n_ale == 1 else t("log_done_many", n=n_ale), "ok")
             if out_paths:
                 import subprocess, sys as _sys
                 folder = str(out_paths[0].parent)
@@ -3915,7 +4592,7 @@ class App:
         finally:
             def _re_enable():
                 self._btn_enabled = True
-                self._draw_verwerk("✦  Verwerk")
+                self._draw_verwerk()
             self.root.after(0, _re_enable)
 
     def log(self, msg, tag="info"):

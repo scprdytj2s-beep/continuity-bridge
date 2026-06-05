@@ -23,8 +23,10 @@ echo "DMG created: /tmp/ContinuityBridge-Silicon-${VERSION}.dmg"
 # Upload
 gh release view "$TAG" || gh release create "$TAG" \
   --title "Continuity Bridge $TAG" \
-  --notes "Release $TAG"
+  --notes "Release $TAG" \
+  --draft
 
 gh release upload "$TAG" "/tmp/ContinuityBridge-Silicon-${VERSION}.dmg" --clobber
 
-echo "✓ Uploaded to GitHub release $TAG"
+echo "✓ Uploaded to GitHub draft release $TAG"
+echo "  Publiceer met: gh release edit $TAG --draft=false"
