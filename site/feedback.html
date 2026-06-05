@@ -524,7 +524,7 @@
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
         <div class="recent-title" style="margin-bottom:0" data-i18n="fb_recent">Recent gemeld</div>
         <button id="copyBtn" onclick="copyForClaude()" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-family:var(--body);font-size:12px;font-weight:500;padding:6px 12px;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
-          📋 Kopieer lijst voor Claude
+          ⬡ Export
         </button>
       </div>
       <div class="issue-list" id="issueList">
@@ -744,7 +744,7 @@
         const issues = await res.json();
         if (!issues.length) {
           btn.textContent = '✓ Geen open meldingen';
-          setTimeout(() => btn.textContent = '📋 Kopieer lijst voor Claude', 2000);
+          setTimeout(() => btn.textContent = '⬡ Export', 2000);
           return;
         }
         const lines = [
@@ -759,10 +759,10 @@
         ].join('\n');
         await navigator.clipboard.writeText(lines);
         btn.textContent = '✓ Gekopieerd!';
-        setTimeout(() => btn.textContent = '📋 Kopieer lijst voor Claude', 2000);
+        setTimeout(() => btn.textContent = '⬡ Export', 2000);
       } catch {
         btn.textContent = '✗ Mislukt';
-        setTimeout(() => btn.textContent = '📋 Kopieer lijst voor Claude', 2000);
+        setTimeout(() => btn.textContent = '⬡ Export', 2000);
       }
     }
 
