@@ -20,13 +20,11 @@ except ImportError:
 # wordt geladen. Drag-and-drop gaat via native ObjC ctypes (zie _setup_native_dnd).
 HAS_DND = False
 
-# Native macOS drag-and-drop via PyObjC (fallback wanneer tkinterdnd2 niet werkt)
-try:
-    import objc as _objc
-    from AppKit import NSApplication as _NSApp, NSDragOperationCopy as _DND_COPY
-    HAS_NATIVE_DND = True
-except ImportError:
-    HAS_NATIVE_DND = False
+# Native macOS drag-and-drop via pure ctypes (geen PyObjC nodig — werkt op Silicon én Intel)
+import sys as _sys
+HAS_NATIVE_DND = _sys.platform == "darwin"
+# NSDragOperationCopy = 1 (AppKit constante, geen import nodig)
+_DND_COPY = 1
 
 
 # ---------------------------------------------------------------------------
@@ -878,6 +876,7 @@ def _cw_add(cw_dict, idx, val):
 def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", rating_col="Auto",
                 sound_notes_col="Auto", camera_notes_col="Auto",
                 pu_col="Auto", pu_position="voor",
+                pu_eigen_kolom=False, pu_eigen_kolom_naam="PU",
                 afg_col="Auto", afg_position="voor",
                 general_notes_col="Auto", star_format="sterren"):
     with open(ale_path, "rb") as f:
@@ -1008,6 +1007,15 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
                 col_headers.append(_pu_col_name)
                 log(f"Kolom '{_pu_col_name}' toegevoegd aan ALE (PU).", "info")
             pu_idx = col_headers.index(_pu_col_name)
+
+    # PU eigen kolom (aparte kolom met alleen "PU" als waarde)
+    pu_eigen_idx = None
+    if pu_eigen_kolom and pu_eigen_kolom_naam:
+        _pu_ek = pu_eigen_kolom_naam.strip() or "PU"
+        if _pu_ek not in col_headers:
+            col_headers.append(_pu_ek)
+            log(f"Kolom '{_pu_ek}' toegevoegd aan ALE (PU markering).", "info")
+        pu_eigen_idx = col_headers.index(_pu_ek)
 
     # AFG-kolom: zelfde logica als PU
     afg_idx = None
@@ -1160,6 +1168,9 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
                     parts[afg_idx] = (existing + " (AFG)").strip() if existing else "(AFG)"
                 else:
                     parts[afg_idx] = ("(AFG) " + existing).strip() if existing else "(AFG)"
+            # PU eigen kolom — schrijf gewoon "PU" (geen tekst, geen positie)
+            if info.get("is_pu") and pu_eigen_idx is not None:
+                parts[pu_eigen_idx] = "PU"
         row_str = "\t".join(parts)
         if new_cols or _orig_has_trailing_tab:
             row_str += "\t"
@@ -1286,7 +1297,7 @@ _patch_nsmenuitem_for_macos15plus()
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.3.5 (Beta)"
+VERSION       = "1.3.6 (Beta)"
 
 # ── Vertalingen ────────────────────────────────────────────────────────────────
 STRINGS: dict[str, dict[str, str]] = {
@@ -1341,6 +1352,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_stars_number":      "cijfer (1-5)",
         "prefs_stars_letter":      "letters (X/V)",
         "prefs_write_pu":          "Schrijf (PU)",
+        "prefs_pu_own_col":        "PU in eigen kolom",
+        "prefs_pu_col_name":       "Kolomnaam",
         "prefs_write_afg":         "Schrijf (AFG)",
         "prefs_position":          "positie:",
         "prefs_pos_before":        "voor",
@@ -1518,6 +1531,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_stars_number":      "number (1-5)",
         "prefs_stars_letter":      "letters (X/V)",
         "prefs_write_pu":          "Write (PU)",
+        "prefs_pu_own_col":        "PU in separate column",
+        "prefs_pu_col_name":       "Column name",
         "prefs_write_afg":         "Write (AFG)",
         "prefs_position":          "position:",
         "prefs_pos_before":        "before",
@@ -1695,6 +1710,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_stars_number":      "Zahl (1-5)",
         "prefs_stars_letter":      "Buchstaben (X/V)",
         "prefs_write_pu":          "Schreibe (PU)",
+        "prefs_pu_own_col":        "PU in eigener Spalte",
+        "prefs_pu_col_name":       "Spaltenname",
         "prefs_write_afg":         "Schreibe (AFG)",
         "prefs_position":          "Position:",
         "prefs_pos_before":        "vor",
@@ -2195,6 +2212,8 @@ _PREFS_DEFAULTS = {
     "write_afg_in_notes": False,
     "pu_col":             "Auto",
     "pu_position":        "voor",
+    "pu_eigen_kolom":     False,
+    "pu_eigen_kolom_naam": "PU",
     "afg_col":            "Auto",
     "afg_position":       "voor",
     "write_general_notes": False,
@@ -2340,6 +2359,8 @@ class App:
         self.write_afg_in_notes = tk.BooleanVar(value=_p["write_afg_in_notes"])
         self.pu_col             = tk.StringVar(value=_p.get("pu_col", "Auto"))
         self.pu_position        = tk.StringVar(value=_p.get("pu_position", "voor"))
+        self.pu_eigen_kolom     = tk.BooleanVar(value=_p.get("pu_eigen_kolom", False))
+        self.pu_eigen_kolom_naam = tk.StringVar(value=_p.get("pu_eigen_kolom_naam", "PU"))
         self.afg_col            = tk.StringVar(value=_p.get("afg_col", "Auto"))
         self.afg_position       = tk.StringVar(value=_p.get("afg_position", "voor"))
         self.write_general_notes = tk.BooleanVar(value=_p.get("write_general_notes", False))
@@ -2366,6 +2387,8 @@ class App:
                 "write_afg_in_notes": self.write_afg_in_notes.get(),
                 "pu_col":             self.pu_col.get(),
                 "pu_position":        self.pu_position.get(),
+                "pu_eigen_kolom":     self.pu_eigen_kolom.get(),
+                "pu_eigen_kolom_naam": self.pu_eigen_kolom_naam.get(),
                 "afg_col":            self.afg_col.get(),
                 "afg_position":       self.afg_position.get(),
                 "write_general_notes": self.write_general_notes.get(),
@@ -2394,6 +2417,8 @@ class App:
         self.write_afg_in_notes.trace_add("write", _on_pref_change)
         self.pu_col            .trace_add("write", _on_pref_change)
         self.pu_position       .trace_add("write", _on_pref_change)
+        self.pu_eigen_kolom    .trace_add("write", _on_pref_change)
+        self.pu_eigen_kolom_naam.trace_add("write", _on_pref_change)
         self.afg_col           .trace_add("write", _on_pref_change)
         self.afg_position      .trace_add("write", _on_pref_change)
         self.write_general_notes.trace_add("write", _on_pref_change)
@@ -3389,7 +3414,7 @@ class App:
 
         self._ui()
         if HAS_NATIVE_DND and not HAS_DND:
-            self.root.after(300, self._setup_native_dnd)
+            self.root.after(500, self._setup_native_dnd)
 
     def _pick_column(self, var, parent_win=None):
         """Zoekbaar keuzevenster met alle bekende Avid-kolomnamen."""
@@ -3614,6 +3639,21 @@ class App:
             self.pu_position.set(_POS_TO_CODE.get(_pu_pos_display.get(), "voor"))
         _pu_pos_cb.bind("<<ComboboxSelected>>", _on_pu_pos)
 
+        # PU eigen kolom: checkbox + kolomnaam entry
+        r5b = _row(t("prefs_pu_own_col"))
+        tk.Checkbutton(r5b, variable=self.pu_eigen_kolom,
+                       bg=BG, fg=TEXT, selectcolor=SURFACE2,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+        tk.Label(r5b, text="→", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+        tk.Label(r5b, text=t("prefs_pu_col_name") + ":", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 10)).pack(side="left", padx=(0, 4))
+        _pu_kn_entry = tk.Entry(r5b, textvariable=self.pu_eigen_kolom_naam,
+                                width=10, bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
+                                relief="flat", font=("Helvetica Neue", 11))
+        _pu_kn_entry.pack(side="left")
+
         # AFG: checkbox + "→" + kolom-dropdown + voor/achter
         AFG_COLS = ["Auto", "Comment", "Comments", "Notes", "Take_Notes"]
         r6 = _row(t("prefs_write_afg"))
@@ -3825,45 +3865,27 @@ class App:
         # Start de poller vanuit normale Python-context (veilig voor PythonCmd)
         app_ref.root.after(50, _poll_drops)
 
+        # ── Pure-ctypes attach — geen PyObjC nodig (werkt op Silicon én Intel) ──
+        _dnd_setup_done = [False]   # list zodat closure het kan muteren
+
         def attach():
             try:
-                our_win = None
-                for win in _NSApp.sharedApplication().windows():
-                    if win.title() == "Continuity Bridge":
-                        our_win = win
-                        break
-                if our_win is None:
-                    app_ref.root.after(200, attach)
-                    return
-
-                cv  = our_win.contentView()
-                vc  = type(cv)   # TKContentView
-
-                if getattr(vc, "_ale_dnd_ready", False):
-                    cv.registerForDraggedTypes_(["NSFilenamesPboardType"])
-                    return
-
-                # ── ObjC runtime via ctypes ──────────────────────────────
                 libobjc = ctypes.CDLL('/usr/lib/libobjc.A.dylib')
 
-                libobjc.objc_getClass.restype        = ctypes.c_void_p
-                libobjc.objc_getClass.argtypes       = [ctypes.c_char_p]
-                libobjc.sel_registerName.restype     = ctypes.c_void_p
-                libobjc.sel_registerName.argtypes    = [ctypes.c_char_p]
-                libobjc.class_replaceMethod.restype  = ctypes.c_void_p
-                libobjc.class_replaceMethod.argtypes = [
+                libobjc.objc_getClass.restype         = ctypes.c_void_p
+                libobjc.objc_getClass.argtypes        = [ctypes.c_char_p]
+                libobjc.sel_registerName.restype      = ctypes.c_void_p
+                libobjc.sel_registerName.argtypes     = [ctypes.c_char_p]
+                libobjc.class_replaceMethod.restype   = ctypes.c_void_p
+                libobjc.class_replaceMethod.argtypes  = [
                     ctypes.c_void_p, ctypes.c_void_p,
                     ctypes.c_void_p, ctypes.c_char_p,
                 ]
 
-                cls_ptr = libobjc.objc_getClass(b'TKContentView')
-                if not cls_ptr:
-                    return   # klasse niet gevonden
-
                 # Adres van objc_msgSend voor getypeerde wrappers
                 _sa = ctypes.cast(libobjc.objc_msgSend, ctypes.c_void_p).value
 
-                # Hulp: getypeerde aanroepen via objc_msgSend ──────────────
+                # Getypeerde msgSend-wrappers ──────────────────────────────
                 def _p(obj, sel):
                     """(obj, sel) → id"""
                     return ctypes.CFUNCTYPE(
@@ -3896,23 +3918,104 @@ class App:
                         ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p
                     )(_sa)(obj, sel)
 
-                # Selectors ────────────────────────────────────────────────
-                SEL_pb    = libobjc.sel_registerName(b'draggingPasteboard')
-                SEL_types = libobjc.sel_registerName(b'types')
-                SEL_count = libobjc.sel_registerName(b'count')
-                SEL_obj   = libobjc.sel_registerName(b'objectAtIndex:')
-                SEL_plist = libobjc.sel_registerName(b'propertyListForType:')
-                SEL_utf8  = libobjc.sel_registerName(b'UTF8String')
+                def _v_p(obj, sel, arg):
+                    """(obj, sel, id) → void"""
+                    ctypes.CFUNCTYPE(
+                        None, ctypes.c_void_p,
+                        ctypes.c_void_p, ctypes.c_void_p
+                    )(_sa)(obj, sel, arg)
 
-                # NSFilenamesPboardType NSString via ctypes
-                NSStr_cls = libobjc.objc_getClass(b'NSString')
-                SEL_swu   = libobjc.sel_registerName(b'stringWithUTF8String:')
-                _nsfpt    = ctypes.CFUNCTYPE(
-                    ctypes.c_void_p, ctypes.c_void_p,
-                    ctypes.c_void_p, ctypes.c_char_p
-                )(_sa)(NSStr_cls, SEL_swu, b'NSFilenamesPboardType')
+                def _p_cs(cls, sel, s):
+                    """class + stringWithUTF8String: → NSString"""
+                    return ctypes.CFUNCTYPE(
+                        ctypes.c_void_p, ctypes.c_void_p,
+                        ctypes.c_void_p, ctypes.c_char_p
+                    )(_sa)(cls, sel, s)
 
-                # Helpers ──────────────────────────────────────────────────
+                # Veelgebruikte selectors ──────────────────────────────────
+                SEL_count   = libobjc.sel_registerName(b'count')
+                SEL_obj_at  = libobjc.sel_registerName(b'objectAtIndex:')
+                SEL_utf8    = libobjc.sel_registerName(b'UTF8String')
+
+                # ── Zoek het NSWindow van Continuity Bridge via NSApp ─────
+                NSApp_cls       = libobjc.objc_getClass(b'NSApplication')
+                NSStr_cls       = libobjc.objc_getClass(b'NSString')
+                NSArr_cls       = libobjc.objc_getClass(b'NSArray')
+                SEL_shared      = libobjc.sel_registerName(b'sharedApplication')
+                SEL_windows     = libobjc.sel_registerName(b'windows')
+                SEL_title       = libobjc.sel_registerName(b'title')
+                SEL_content_v   = libobjc.sel_registerName(b'contentView')
+                SEL_reg_types   = libobjc.sel_registerName(b'registerForDraggedTypes:')
+                SEL_swu         = libobjc.sel_registerName(b'stringWithUTF8String:')
+                SEL_arr_obj     = libobjc.sel_registerName(b'arrayWithObject:')
+
+                if not NSApp_cls:
+                    app_ref.root.after(300, attach)
+                    return
+
+                nsapp = _p(NSApp_cls, SEL_shared)
+                if not nsapp:
+                    app_ref.root.after(300, attach)
+                    return
+
+                windows  = _p(nsapp, SEL_windows)
+                if not windows:
+                    app_ref.root.after(300, attach)
+                    return
+
+                n_wins  = _u(windows, SEL_count)
+                our_win = None
+                for i in range(n_wins):
+                    win = _p_u(windows, SEL_obj_at, i)
+                    if not win:
+                        continue
+                    t_ns = _p(win, SEL_title)
+                    if not t_ns:
+                        continue
+                    t_cs = _cs(t_ns, SEL_utf8)
+                    if t_cs and t_cs == b'Continuity Bridge':
+                        our_win = win
+                        break
+
+                if our_win is None:
+                    app_ref.root.after(300, attach)
+                    return
+
+                cv = _p(our_win, SEL_content_v)
+                if not cv:
+                    app_ref.root.after(300, attach)
+                    return
+
+                # NSFilenamesPboardType als NSString ──────────────────────
+                _nsfpt = _p_cs(NSStr_cls, SEL_swu, b'NSFilenamesPboardType')
+
+                # registerForDraggedTypes: met NSArray van één element ─────
+                def _register_drag_types():
+                    arr = _p_p(NSArr_cls, SEL_arr_obj, _nsfpt)
+                    if arr:
+                        _v_p(cv, SEL_reg_types, arr)
+
+                if _dnd_setup_done[0]:
+                    # Methoden al gepatcht, alleen opnieuw registreren
+                    _register_drag_types()
+                    return
+
+                # ── TKContentView-klasse patchen ──────────────────────────
+                cls_ptr = libobjc.objc_getClass(b'TKContentView')
+                if not cls_ptr:
+                    return   # Tkinter-klasse niet gevonden
+
+                # Selectors ───────────────────────────────────────────────
+                SEL_pb      = libobjc.sel_registerName(b'draggingPasteboard')
+                SEL_types   = libobjc.sel_registerName(b'types')
+                SEL_plist   = libobjc.sel_registerName(b'propertyListForType:')
+                SEL_entered = libobjc.sel_registerName(b'draggingEntered:')
+                SEL_updated = libobjc.sel_registerName(b'draggingUpdated:')
+                SEL_prepare = libobjc.sel_registerName(b'prepareForDragOperation:')
+                SEL_perform = libobjc.sel_registerName(b'performDragOperation:')
+                SEL_exited  = libobjc.sel_registerName(b'draggingExited:')
+
+                # Helpers ─────────────────────────────────────────────────
                 def _has_file_types(sender_p):
                     try:
                         pb = _p(sender_p, SEL_pb)
@@ -3921,8 +4024,8 @@ class App:
                         if not tys: return False
                         n = _u(tys, SEL_count)
                         for i in range(n):
-                            t = _p_u(tys, SEL_obj, i)
-                            if t and _cs(t, SEL_utf8) == b'NSFilenamesPboardType':
+                            ty = _p_u(tys, SEL_obj_at, i)
+                            if ty and _cs(ty, SEL_utf8) == b'NSFilenamesPboardType':
                                 return True
                     except Exception:
                         pass
@@ -3937,7 +4040,7 @@ class App:
                         n   = _u(arr, SEL_count)
                         out = []
                         for i in range(n):
-                            item = _p_u(arr, SEL_obj, i)
+                            item = _p_u(arr, SEL_obj_at, i)
                             if item:
                                 s = _cs(item, SEL_utf8)
                                 if s:
@@ -3946,7 +4049,7 @@ class App:
                     except Exception:
                         return []
 
-                # IMP-types ────────────────────────────────────────────────
+                # IMP-types ───────────────────────────────────────────────
                 DragOpIMP = ctypes.CFUNCTYPE(
                     ctypes.c_uint64,
                     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
@@ -3980,7 +4083,7 @@ class App:
                 def _imp_exited(s, se, sender):
                     pass
 
-                # Ctypes callbacks — moeten in leven blijven (opgeslagen op klasse)
+                # Ctypes callbacks — moeten in leven blijven (opgeslagen op app_ref)
                 _imps = (
                     DragOpIMP(_imp_entered),
                     DragOpIMP(_imp_updated),
@@ -3989,32 +4092,22 @@ class App:
                     VoidIMP(_imp_exited),
                 )
 
-                SEL_entered = libobjc.sel_registerName(b'draggingEntered:')
-                SEL_updated = libobjc.sel_registerName(b'draggingUpdated:')
-                SEL_prepare = libobjc.sel_registerName(b'prepareForDragOperation:')
-                SEL_perform = libobjc.sel_registerName(b'performDragOperation:')
-                SEL_exited  = libobjc.sel_registerName(b'draggingExited:')
-
                 libobjc.class_replaceMethod(cls_ptr, SEL_entered, _imps[0], b'Q@:@')
                 libobjc.class_replaceMethod(cls_ptr, SEL_updated, _imps[1], b'Q@:@')
                 libobjc.class_replaceMethod(cls_ptr, SEL_prepare, _imps[2], b'B@:@')
                 libobjc.class_replaceMethod(cls_ptr, SEL_perform, _imps[3], b'B@:@')
                 libobjc.class_replaceMethod(cls_ptr, SEL_exited,  _imps[4], b'v@:@')
 
-                vc._ale_imps      = _imps   # voorkomt garbage collection
-                vc._ale_dnd_ready = True
+                app_ref._dnd_imps   = _imps   # voorkomt garbage collection
+                _dnd_setup_done[0]  = True
 
-                cv.registerForDraggedTypes_(["NSFilenamesPboardType"])
+                _register_drag_types()
 
             except Exception as _e:
-                # DnD via ObjC faalt — fallback: upload button blijft werkend
-                app_ref._log_direct(f"Drag-drop niet beschikbaar (fallback: upload knop gebruiken)", "warn")
+                # Stille fout — DnD werkt niet, uploadknop blijft beschikbaar
+                pass
 
-        try:
-            attach()
-        except Exception:
-            # Nog een extra vangnet
-            pass
+        attach()
 
     def _ui(self):
         # ── Header (gradient canvas) ─────────────────────────────────────────
@@ -4538,6 +4631,8 @@ class App:
                                      pu_col=(self.pu_col.get()
                                              if self.write_pu_in_notes.get() else "Uit"),
                                      pu_position=self.pu_position.get(),
+                                     pu_eigen_kolom=self.pu_eigen_kolom.get(),
+                                     pu_eigen_kolom_naam=self.pu_eigen_kolom_naam.get(),
                                      afg_col=(self.afg_col.get()
                                               if self.write_afg_in_notes.get() else "Uit"),
                                      afg_position=self.afg_position.get(),
@@ -4547,11 +4642,25 @@ class App:
                 stem    = Path(ale_p).stem
                 out_dir = Path(_out_dir) if _out_dir else Path(ale_p).parent
                 out     = out_dir / f"{stem}{_out_suffix}.ALE"
-                # ALE verwacht Latin-1; emoji/symbolen → leesbare tekst
+                # ALE verwacht Latin-1; normaliseer Unicode → ASCII/Latin-1
+                _UNICODE_MAP = {
+                    '‘': "'", '’': "'",   # curly single quotes → '
+                    '“': '"', '”': '"',   # curly double quotes → "
+                    '–': '-', '—': '-',   # en-dash / em-dash → -
+                    '…': '...',                 # ellipsis → ...
+                    '·': '-', '•': '-',   # bullet/middot → -
+                    ' ': ' ',                   # non-breaking space → space
+                    '​': '',  '‌': '',     # zero-width spaces → remove
+                }
                 def _ale_safe(s):
                     out = []
                     for c in s:
-                        if '︀' <= c <= '️':  # variation selectors weggooien
+                        # Variation selectors / emoji presentation modifiers weggooien
+                        if '︀' <= c <= '️' or c == '️':
+                            continue
+                        # Bekende vervangingen
+                        if c in _UNICODE_MAP:
+                            out.append(_UNICODE_MAP[c])
                             continue
                         try:
                             c.encode('latin-1')
