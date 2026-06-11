@@ -88,8 +88,8 @@ app = BUNDLE(
     info_plist={
         'CFBundleName': 'Continuity Bridge',
         'CFBundleDisplayName': 'Continuity Bridge',
-        'CFBundleVersion': '1.3.6',
-        'CFBundleShortVersionString': '1.3.6',
+        'CFBundleVersion': '1.3.7',
+        'CFBundleShortVersionString': '1.3.7',
         'NSHighResolutionCapable': True,
         'LSMinimumSystemVersion': '11.0',
         'NSRequiresAquaSystemAppearance': False,

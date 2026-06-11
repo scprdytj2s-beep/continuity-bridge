@@ -918,6 +918,13 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
     scene_idx = idx("Scene")       # alleen bijwerken als al aanwezig
     desc_idx  = idx("Description") # alleen bijwerken als al aanwezig
 
+    # Tracks-kolom is verplicht voor Avid ALE-import — voeg toe als afwezig
+    tracks_idx = idx("Tracks")
+    if tracks_idx is None:
+        col_headers.append("Tracks")
+        tracks_idx = len(col_headers) - 1
+        log("Geen Tracks-kolom gevonden — 'Tracks' met waarde 'V' toegevoegd.", "info")
+
     # Rating-kolom: gebruik keuze van gebruiker, anders auto-detectie
     if rating_col and rating_col != "Auto":
         rating_idx = idx(rating_col)
@@ -950,14 +957,14 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
                 log(f"Kolom '{notes_col}' niet gevonden — toegevoegd aan ALE.", "info")
         else:
             take_notes_idx = next(
-                (idx(c) for c in ("Comment", "Take_notes", "Note", "Notes", "Comments")
+                (idx(c) for c in ("Take_notes", "Comment", "Note", "Notes", "Comments")
                  if idx(c) is not None),
                 None
             )
             if take_notes_idx is None:
-                col_headers.append("Comment")
+                col_headers.append("Take_notes")
                 take_notes_idx = len(col_headers) - 1
-                log("Geen notes-kolom gevonden — 'Comment' toegevoegd aan ALE.", "info")
+                log("Geen notes-kolom gevonden — 'Take_notes' toegevoegd aan ALE.", "info")
 
     if take_notes_idx is not None:
         log(f"Notes → kolom '{col_headers[take_notes_idx]}'", "info")
@@ -1063,6 +1070,9 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
         while len(parts) < n_orig: parts.append("")
         for _ in new_cols:
             parts.append("")
+        # Tracks standaard 'V' als kolom nieuw is (was afwezig in origineel)
+        if tracks_idx is not None and tracks_idx >= n_orig and not parts[tracks_idx]:
+            parts[tracks_idx] = "V"
         clip_short = parts[name_idx][:8]
         info = clip_data.get(clip_short)
 
@@ -1115,6 +1125,10 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
             if m_lnde:
                 lnde_key = f"LNDE_B:{m_lnde.group(1)}:{int(m_lnde.group(2)):03d}"
                 info = clip_data.get(lnde_key)
+
+        # Wis altijd bestaande camera-rating (bv. "0" of "5") zodat alleen CB-waarden overblijven
+        if write_rating and rating_idx is not None and rating_idx < len(parts):
+            parts[rating_idx] = ""
 
         if info:
             matched += 1
@@ -1171,13 +1185,48 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
             # PU eigen kolom — schrijf gewoon "PU" (geen tekst, geen positie)
             if info.get("is_pu") and pu_eigen_idx is not None:
                 parts[pu_eigen_idx] = "PU"
-        row_str = "\t".join(parts)
-        if new_cols or _orig_has_trailing_tab:
-            row_str += "\t"
-        new_data_lines.append(row_str)
+        parts = [p.replace("\t", " ").replace("\r", " ").replace("\n", " ") for p in parts]
+        new_data_lines.append(parts)  # bewaar als list; joinen gebeurt hieronder
 
     log(t("log_ale_matched", n=matched), "info")
-    _hdr_sep = "\t" if (new_cols or lines[col_idx + 1].endswith("\t")) else ""
+
+    # Volledig lege kolommen wegstrippen. Sommige ALE-exports (bv. Sony Venice
+    # via een Avid-bin) bevatten tientallen lege metadata-kolommen, soms met
+    # afgekapte dubbele namen — Avid kan zijn eigen export dan niet terug
+    # importeren ("syntax error in timecode field"). Lege kolommen dragen geen
+    # data, dus verwijderen is verliesvrij.
+    n_cols = len(col_headers)
+    col_has_data = [False] * n_cols
+    for row in new_data_lines:
+        if isinstance(row, list):
+            for i, v in enumerate(row[:n_cols]):
+                if v.strip():
+                    col_has_data[i] = True
+    # Essentiële kolommen altijd behouden, ook als (toevallig) leeg
+    _protect = {name_idx, rating_idx, take_notes_idx, tracks_idx, tape_idx}
+    for _c in ("Name", "Start", "End", "Duration", "Source File"):
+        _protect.add(idx(_c))
+    _protect.discard(None)
+    keep = [i for i in range(n_cols) if col_has_data[i] or i in _protect]
+    dropped = n_cols - len(keep)
+
+    if dropped:
+        col_headers = [col_headers[i] for i in keep]
+        for j, row in enumerate(new_data_lines):
+            if isinstance(row, list):
+                new_data_lines[j] = "\t".join(
+                    row[i] if i < len(row) else "" for i in keep)
+        log(f"{dropped} lege kolommen verwijderd voor Avid-compatibiliteit.", "info")
+        _hdr_sep = ""
+    else:
+        for j, row in enumerate(new_data_lines):
+            if isinstance(row, list):
+                s = "\t".join(row)
+                if new_cols or _orig_has_trailing_tab:
+                    s += "\t"
+                new_data_lines[j] = s
+        _hdr_sep = "\t" if (new_cols or lines[col_idx + 1].endswith("\t")) else ""
+
     out_lines = lines[:col_idx] + ["Column", "\t".join(col_headers) + _hdr_sep, "", "Data"] + new_data_lines
     result = le.join(out_lines)
     if raw.endswith(le.encode()):
@@ -1297,7 +1346,7 @@ _patch_nsmenuitem_for_macos15plus()
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.3.6 (Beta)"
+VERSION       = "1.3.7 (Beta)"
 
 # ── Vertalingen ────────────────────────────────────────────────────────────────
 STRINGS: dict[str, dict[str, str]] = {
@@ -1373,6 +1422,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "log_saved":               "Opgeslagen  —  {name}",
         "log_done_one":            "✓  Klaar  —  1 ALE bestand opgeslagen",
         "log_done_many":           "✓  Klaar  —  {n} ALE bestanden opgeslagen",
+        "ask_clear_title":         "Volgende draaidag?",
+        "ask_clear_msg":           "Velden wissen voor de volgende draaidag?",
+        "btn_clear_yes":           "Wis",
+        "btn_clear_no":            "Laat staan",
+        "prefs_clear_label":       "Wissen na verwerken",
+        "prefs_clear_delay":       "Vertraging",
+        "clear_mode_uit":          "Uit",
+        "clear_mode_vragen":       "Vragen",
+        "clear_mode_auto":         "Automatisch",
+        "clear_delay_unit":        "sec",
         # Kolom-picker
         "col_pick_search":         "Zoek:",
         "col_pick_own_label":      "Of typ eigen naam:",
@@ -1454,8 +1513,9 @@ STRINGS: dict[str, dict[str, str]] = {
                    "in plaats van nieuwe clips aan te maken.",
         "faq_q2":  "Welke PDF-formaten worden ondersteund?",
         "faq_a2":  "Continuity Bridge ondersteunt de meeste gangbare continuïteitsrapporten. "
-                   "Werkt jouw rapport niet goed? Stuur het op via "
-                   "support@studiomichielboesveldt.nl — we kijken ernaar.",
+                   "Werkt jouw rapport niet goed? Meld het via het bugrapport op "
+                   "https://studiomichielboesveldt.nl/cbapp/feedback of mail "
+                   "support@studiomichielboesveldt.nl. We kijken ernaar.",
         "faq_q3":  "Verdwijnt mijn info na het maken van een multiclip?",
         "faq_a3":  "Dat kan. Importeer de ALE altijd vóórdat je multiclips aanmaakt. "
                    "Avid draagt metadata niet automatisch over aan bestaande multiclips.",
@@ -1475,10 +1535,36 @@ STRINGS: dict[str, dict[str, str]] = {
         "faq_q7":  "Wat gebeurt er als mijn licentie verloopt?",
         "faq_a7":  "Na een jaar stopt de app met verwerken totdat je verlengt. "
                    "Je bestanden blijven gewoon intact — er verdwijnt niets.",
-        "faq_q8":  "Mijn clips worden niet herkend — wat nu?",
+        "faq_q8":  "Mijn clips worden niet herkend. Wat nu?",
         "faq_a8":  "Controleer of de clipnamen in je ALE overeenkomen met de namen in het "
                    "continuïteitsrapport. Kleine afwijkingen kunnen een mismatch geven. "
-                   "Neem contact op via support@studiomichielboesveldt.nl.",
+                   "Lukt het niet? Meld het via het bugrapport op "
+                   "https://studiomichielboesveldt.nl/cbapp/feedback of mail "
+                   "support@studiomichielboesveldt.nl.",
+        "faq_q9":  "Avid vraagt bij import 'Tape name matches up to maximum length / Merge?'",
+        "faq_a9":  "Dit is normaal Avid-gedrag, geen fout. Je klikt gewoon op 'Yes To All'.\n\n"
+                   "Waarom het gebeurt: Avid bewaart clip-namen met maximaal 32 tekens. "
+                   "Drone-clips hebben langere namen (vaak 45+ tekens). De clip staat dus in je "
+                   "bin onder de ingekorte naam, terwijl de ALE de volledige naam bevat. Avid "
+                   "ziet dat de eerste 32 tekens gelijk zijn en vraagt voor de zekerheid: is dit "
+                   "dezelfde clip, samenvoegen?\n\n"
+                   "Klik 'Yes To All' = ja, het is dezelfde clip. Je continuiteitsdata wordt dan "
+                   "netjes aan de bestaande clips gekoppeld. Er gaat niets verloren.\n\n"
+                   "Continuity Bridge kan deze vraag niet wegnemen: als het de namen zou inkorten "
+                   "tot 32 tekens, zou Avid de clips juist helemaal niet meer terugvinden.",
+        "faq_q10": "Hoe exporteer ik een ALE vanuit Avid, en moet 'UTF-8' aan?",
+        "faq_a10": "Exporteer bij voorkeur vanuit een ruwe beeld-bin met de originele "
+                   "cameraclip-namen. Dat geeft de betrouwbaarste match. Selecteer de clips (of "
+                   "de bin) en kies File > Output > Export, met als formaat 'Avid Log Exchange "
+                   "(ALE)'.\n\n"
+                   "De optie 'UTF-8 Encoding' mag gerust aan blijven. Continuity Bridge leest "
+                   "zowel UTF-8 als de oudere codering, dus het maakt niet uit.\n\n"
+                   "Importeer het verwerkte ALE weer in diezelfde beeld-bin (aangeraden). "
+                   "Gekoppelde sync-clips, subclips en scenes nemen de toegevoegde data (rating, "
+                   "notities) automatisch over van de masterclips.\n\n"
+                   "Tip: zet of maak in je Avid-bin alvast de kolommen aan die je wilt gebruiken "
+                   "(bv. Rating, Take_notes, Comment) voordat je exporteert. Dan bestaan ze al in "
+                   "de ALE en komt de data na het importeren meteen in de juiste kolommen terecht.",
     },
     "en": {
         # Window titles
@@ -1552,6 +1638,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "log_saved":               "Saved  —  {name}",
         "log_done_one":            "✓  Done  —  1 ALE file saved",
         "log_done_many":           "✓  Done  —  {n} ALE files saved",
+        "ask_clear_title":         "Next shooting day?",
+        "ask_clear_msg":           "Clear the fields for the next shooting day?",
+        "btn_clear_yes":           "Clear",
+        "btn_clear_no":            "Keep",
+        "prefs_clear_label":       "Clear after processing",
+        "prefs_clear_delay":       "Delay",
+        "clear_mode_uit":          "Off",
+        "clear_mode_vragen":       "Ask",
+        "clear_mode_auto":         "Automatic",
+        "clear_delay_unit":        "sec",
         # Column picker
         "col_pick_search":         "Search:",
         "col_pick_own_label":      "Or type custom name:",
@@ -1633,8 +1729,9 @@ STRINGS: dict[str, dict[str, str]] = {
                    "instead of creating new ones.",
         "faq_q2":  "Which PDF formats are supported?",
         "faq_a2":  "Continuity Bridge supports most common continuity reports. "
-                   "Does your report not work correctly? Send it to "
-                   "support@studiomichielboesveldt.nl — we will take a look.",
+                   "Does your report not work correctly? Report it via the bug form at "
+                   "https://studiomichielboesveldt.nl/cbapp/feedback or email "
+                   "support@studiomichielboesveldt.nl. We will take a look.",
         "faq_q3":  "Will my metadata disappear after creating a multiclip?",
         "faq_a3":  "It can. Always import the ALE before creating multiclips. "
                    "Avid does not automatically transfer metadata to existing multiclips.",
@@ -1654,10 +1751,36 @@ STRINGS: dict[str, dict[str, str]] = {
         "faq_q7":  "What happens when my license expires?",
         "faq_a7":  "After one year the app stops processing until you renew. "
                    "Your files stay intact — nothing is deleted.",
-        "faq_q8":  "My clips are not recognized — what now?",
+        "faq_q8":  "My clips are not recognized. What now?",
         "faq_a8":  "Check that the clip names in your ALE match the names in the "
                    "continuity report. Small differences can cause a mismatch. "
-                   "Contact support@studiomichielboesveldt.nl.",
+                   "Still stuck? Report it via the bug form at "
+                   "https://studiomichielboesveldt.nl/cbapp/feedback or email "
+                   "support@studiomichielboesveldt.nl.",
+        "faq_q9":  "On import Avid asks 'Tape name matches up to maximum length / Merge?'",
+        "faq_a9":  "This is normal Avid behaviour, not an error. Just click 'Yes To All'.\n\n"
+                   "Why it happens: Avid stores clip names with a maximum of 32 characters. "
+                   "Drone clips have longer names (often 45+ characters). So the clip sits in "
+                   "your bin under the shortened name, while the ALE contains the full name. Avid "
+                   "sees that the first 32 characters match and asks, to be safe: is this the "
+                   "same clip, merge?\n\n"
+                   "Click 'Yes To All' = yes, it's the same clip. Your continuity data is then "
+                   "linked correctly to the existing clips. Nothing is lost.\n\n"
+                   "Continuity Bridge cannot remove this prompt: if it shortened the names to 32 "
+                   "characters, Avid would no longer find the clips at all.",
+        "faq_q10": "How do I export an ALE from Avid, and should 'UTF-8' be on?",
+        "faq_a10": "Preferably export from a raw picture bin that still has the original camera "
+                   "clip names. That gives the most reliable match. Select the clips (or the bin) "
+                   "and choose File > Output > Export, with the format set to 'Avid Log Exchange "
+                   "(ALE)'.\n\n"
+                   "You can leave 'UTF-8 Encoding' on. Continuity Bridge reads both UTF-8 and the "
+                   "older encoding, so it makes no difference.\n\n"
+                   "Import the processed ALE back into that same picture bin (recommended). "
+                   "Linked sync clips, subclips and scenes automatically inherit the added data "
+                   "(rating, notes) from the master clips.\n\n"
+                   "Tip: enable or create the columns you want to use (e.g. Rating, Take_notes, "
+                   "Comment) in your Avid bin before exporting. They then already exist in the "
+                   "ALE, so the data lands in the right columns straight after importing.",
     },
     "de": {
         # Fenstertitel
@@ -1731,6 +1854,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "log_saved":               "Gespeichert  —  {name}",
         "log_done_one":            "✓  Fertig  —  1 ALE-Datei gespeichert",
         "log_done_many":           "✓  Fertig  —  {n} ALE-Dateien gespeichert",
+        "ask_clear_title":         "Nächster Drehtag?",
+        "ask_clear_msg":           "Felder für den nächsten Drehtag leeren?",
+        "btn_clear_yes":           "Leeren",
+        "btn_clear_no":            "Behalten",
+        "prefs_clear_label":       "Nach Verarbeitung leeren",
+        "prefs_clear_delay":       "Verzögerung",
+        "clear_mode_uit":          "Aus",
+        "clear_mode_vragen":       "Fragen",
+        "clear_mode_auto":         "Automatisch",
+        "clear_delay_unit":        "Sek",
         # Spaltenauswahl
         "col_pick_search":         "Suchen:",
         "col_pick_own_label":      "Oder eigenen Namen eingeben:",
@@ -1812,8 +1945,9 @@ STRINGS: dict[str, dict[str, str]] = {
                    "anstatt neue Clips zu erstellen.",
         "faq_q2":  "Welche PDF-Formate werden unterstützt?",
         "faq_a2":  "Continuity Bridge unterstützt die meisten gängigen Kontinuitätsberichte. "
-                   "Funktioniert dein Bericht nicht richtig? Schicke ihn an "
-                   "support@studiomichielboesveldt.nl — wir schauen uns das an.",
+                   "Funktioniert dein Bericht nicht richtig? Melde es ueber das Bug-Formular auf "
+                   "https://studiomichielboesveldt.nl/cbapp/feedback oder schreibe an "
+                   "support@studiomichielboesveldt.nl. Wir schauen uns das an.",
         "faq_q3":  "Verschwinden meine Metadaten nach dem Erstellen eines Multiclips?",
         "faq_a3":  "Das kann passieren. Importiere das ALE immer bevor du Multiclips erstellst. "
                    "Avid überträgt Metadaten nicht automatisch auf vorhandene Multiclips.",
@@ -1833,10 +1967,39 @@ STRINGS: dict[str, dict[str, str]] = {
         "faq_q7":  "Was passiert, wenn meine Lizenz abläuft?",
         "faq_a7":  "Nach einem Jahr stoppt die App mit der Verarbeitung bis du verlängerst. "
                    "Deine Dateien bleiben unberührt — es wird nichts gelöscht.",
-        "faq_q8":  "Meine Clips werden nicht erkannt — was nun?",
+        "faq_q8":  "Meine Clips werden nicht erkannt. Was nun?",
         "faq_a8":  "Überprüfe, ob die Clip-Namen in deinem ALE mit den Namen im "
                    "Kontinuitätsbericht übereinstimmen. Kleine Abweichungen können zu Nichtübereinstimmungen führen. "
-                   "Kontaktiere support@studiomichielboesveldt.nl.",
+                   "Klappt es nicht? Melde es ueber das Bug-Formular auf "
+                   "https://studiomichielboesveldt.nl/cbapp/feedback oder schreibe an "
+                   "support@studiomichielboesveldt.nl.",
+        "faq_q9":  "Avid fragt beim Import 'Tape name matches up to maximum length / Merge?'",
+        "faq_a9":  "Das ist normales Avid-Verhalten, kein Fehler. Klicke einfach auf 'Yes To All'.\n\n"
+                   "Warum es passiert: Avid speichert Clip-Namen mit maximal 32 Zeichen. "
+                   "Drohnen-Clips haben laengere Namen (oft 45+ Zeichen). Der Clip liegt also im "
+                   "Bin unter dem gekuerzten Namen, waehrend das ALE den vollstaendigen Namen "
+                   "enthaelt. Avid sieht, dass die ersten 32 Zeichen gleich sind, und fragt "
+                   "sicherheitshalber: ist das derselbe Clip, zusammenfuehren?\n\n"
+                   "Klicke 'Yes To All' = ja, es ist derselbe Clip. Deine Kontinuitaetsdaten "
+                   "werden dann korrekt mit den vorhandenen Clips verknuepft. Es geht nichts "
+                   "verloren.\n\n"
+                   "Continuity Bridge kann diese Frage nicht entfernen: wuerde es die Namen auf "
+                   "32 Zeichen kuerzen, wuerde Avid die Clips gar nicht mehr finden.",
+        "faq_q10": "Wie exportiere ich ein ALE aus Avid, und sollte 'UTF-8' an sein?",
+        "faq_a10": "Exportiere am besten aus einem rohen Bild-Bin mit den originalen "
+                   "Kamera-Clip-Namen. Das ergibt die zuverlaessigste Zuordnung. Waehle die Clips "
+                   "(oder den Bin) und gehe auf File > Output > Export, mit dem Format 'Avid Log "
+                   "Exchange (ALE)'.\n\n"
+                   "Die Option 'UTF-8 Encoding' kann ruhig an bleiben. Continuity Bridge liest "
+                   "sowohl UTF-8 als auch die aeltere Kodierung, es macht also keinen "
+                   "Unterschied.\n\n"
+                   "Importiere das verarbeitete ALE wieder in denselben Bild-Bin (empfohlen). "
+                   "Verknuepfte Sync-Clips, Subclips und Szenen uebernehmen die hinzugefuegten "
+                   "Daten (Bewertung, Notizen) automatisch von den Masterclips.\n\n"
+                   "Tipp: aktiviere oder erstelle in deinem Avid-Bin schon die gewuenschten "
+                   "Spalten (z.B. Rating, Take_notes, Comment), bevor du exportierst. Dann "
+                   "existieren sie bereits im ALE und die Daten landen nach dem Import direkt in "
+                   "den richtigen Spalten.",
     },
 }
 
@@ -2013,9 +2176,10 @@ SURFACE  = "#0C0A22"   # kaartachtergrond
 SURFACE2 = "#161130"   # hover / actief
 BORDER   = "#2E2060"   # subtiele paarse rand
 TEXT     = "#F0ECFF"   # helder bijna-wit
-MUTED    = "#6858AA"   # gedempte subtekst
+MUTED    = "#9C8FD0"   # gedempte subtekst (lichter voor leesbaarheid)
 AVID_B   = "#8B30F5"   # elektrisch paars (knop, header)
 AVID_B_H = "#7A26E0"   # hover — iets donkerder
+ACCENT2  = "#B98CFF"   # lichter paars accent (FAQ-plus, kolomlabels)
 SUCCESS  = "#4ED98A"
 ERROR    = "#FF5577"
 
@@ -2219,6 +2383,8 @@ _PREFS_DEFAULTS = {
     "write_general_notes": False,
     "general_notes_col":  "Camera_Notes",
     "language":           "en",
+    "clear_mode":         "vragen",   # "uit" | "vragen" | "automatisch"
+    "clear_delay":        5,          # seconden, in stappen van 5
 }
 _INVALID_COL_VALUES = {"Kies kolom…", "Choose column…", "Spalte wählen…",
                        "Eigen naam…", "Kies kolom...", ""}
@@ -2265,7 +2431,7 @@ class App:
                     "Note", "Rating", "Stars", "Take_Notes"]
 
     NOTES_COLS   = ["Auto", "Comment", "Comments", "Description", "Label",
-                    "Note", "Notes", "Take_Notes", "Take_notes"]
+                    "Note", "Notes", "Take_notes"]
     RATING_COLS  = ["Auto", "Circled", "Rating", "Score", "Stars"]
 
     # Alle bekende Avid Media Composer kolomnamen, gegroepeerd
@@ -2366,6 +2532,8 @@ class App:
         self.write_general_notes = tk.BooleanVar(value=_p.get("write_general_notes", False))
         self.general_notes_col  = tk.StringVar(value=_p.get("general_notes_col", "Camera_Notes"))
         self.language           = tk.StringVar(value=_p.get("language", "en"))
+        self.clear_mode         = tk.StringVar(value=_p.get("clear_mode", "vragen"))
+        self.clear_delay        = tk.IntVar(value=_p.get("clear_delay", 5))
         self._prefs_cache = _p   # bewaar voor recents
 
         def _save_all():
@@ -2394,6 +2562,8 @@ class App:
                 "write_general_notes": self.write_general_notes.get(),
                 "general_notes_col":  self.general_notes_col.get(),
                 "language":           self.language.get(),
+                "clear_mode":         self.clear_mode.get(),
+                "clear_delay":        self.clear_delay.get(),
             })
         self._save_prefs_all = _save_all
 
@@ -2423,6 +2593,8 @@ class App:
         self.afg_position      .trace_add("write", _on_pref_change)
         self.write_general_notes.trace_add("write", _on_pref_change)
         self.general_notes_col .trace_add("write", _on_pref_change)
+        self.clear_mode.trace_add("write", _on_pref_change)
+        self.clear_delay.trace_add("write", _on_pref_change)
         self.root.title(t("wintitle_main"))
         self.root.geometry("520x650")
         self.root.resizable(False, True)
@@ -2788,6 +2960,7 @@ class App:
         # ── FAQ-venster ──────────────────────────────────────────────────────
         def _show_faq():
             FAQ = [
+                (t("faq_q10"), t("faq_a10")),
                 (t("faq_q1"), t("faq_a1")),
                 (t("faq_q2"), t("faq_a2")),
                 (t("faq_q3"), t("faq_a3")),
@@ -2796,6 +2969,7 @@ class App:
                 (t("faq_q6"), t("faq_a6")),
                 (t("faq_q7"), t("faq_a7")),
                 (t("faq_q8"), t("faq_a8")),
+                (t("faq_q9"), t("faq_a9")),
             ]
 
             win = tk.Toplevel(self.root)
@@ -2804,6 +2978,12 @@ class App:
             win.resizable(False, True)
             win.geometry("560x620")
             win.minsize(480, 300)
+            # Zelfde menubalk tonen ipv het macOS-standaardmenu (File/Edit/Window…)
+            try:
+                if getattr(self, "_menubar", None):
+                    win.config(menu=self._menubar)
+            except Exception:
+                pass
 
             # ── Scrollable via Text widget trick ──────────────────────────────
             outer = tk.Frame(win, bg=BG)
@@ -2840,46 +3020,80 @@ class App:
                      anchor="w").pack(anchor="w", padx=22, pady=(0, 14))
 
             # ── Accordion items ───────────────────────────────────────────────
-            for q, a in FAQ:
+            _HOVER   = "#1E1740"   # subtiele hover-achtergrond
+            _ANS_BG  = SURFACE     # iets afwijkende achtergrond voor het antwoord
+            _ANS_FG  = "#C9C0EA"   # goed leesbaar lavendel-wit voor de antwoordtekst
+
+            def _relayout():
+                inner.update_idletasks()
+                cv.configure(scrollregion=cv.bbox("all"))
+
+            def _make_card(q, a):
                 card = tk.Frame(inner, bg=SURFACE2,
                                 highlightbackground=BORDER, highlightthickness=1)
-                card.pack(fill="x", padx=14, pady=(0, 5))
+                card.pack(fill="x", padx=16, pady=4)
 
-                plus_var = tk.StringVar(value="+")
-                open_var = [False]
+                state = {"open": False}
+                chev  = tk.StringVar(value="▸")
 
-                # Answer (hidden initially)
-                ans = tk.Frame(card, bg=SURFACE2)
-                tk.Label(ans, text=a, bg=SURFACE2, fg=MUTED,
-                         font=("Helvetica Neue", 11),
-                         wraplength=490, justify="left",
-                         anchor="nw").pack(fill="x", padx=16, pady=(0, 14))
-
-                def _toggle(ov=open_var, af=ans, pv=plus_var):
-                    ov[0] = not ov[0]
-                    pv.set("×" if ov[0] else "+")
-                    if ov[0]:
-                        af.pack(fill="x", after=af.master.winfo_children()[0])
-                    else:
-                        af.pack_forget()
-                    inner.update_idletasks()
-                    cv.configure(scrollregion=cv.bbox("all"))
-
-                # Question row
-                row = tk.Frame(card, bg=SURFACE2, cursor="hand2")
+                # Vraag-rij: accentbalk + tekst + chevron
+                row = tk.Frame(card, bg=SURFACE2, cursor="arrow")
                 row.pack(fill="x")
-                tk.Label(row, text=q, bg=SURFACE2, fg=TEXT,
-                         font=("Helvetica Neue", 11, "bold"),
-                         wraplength=450, justify="left", anchor="w").pack(
-                    side="left", padx=16, pady=12, fill="x", expand=True)
-                tk.Label(row, textvariable=plus_var,
-                         bg=SURFACE2, fg=ACCENT2,
-                         font=("Helvetica Neue", 14)).pack(side="right", padx=14)
+                bar = tk.Frame(row, bg=SURFACE2, width=3)
+                bar.pack(side="left", fill="y")
+                qlbl = tk.Label(row, text=q, bg=SURFACE2, fg=TEXT,
+                                font=("Helvetica Neue", 12, "bold"),
+                                wraplength=400, justify="left", anchor="w")
+                qlbl.pack(side="left", padx=(13, 10), pady=14, fill="x", expand=True)
+                chlbl = tk.Label(row, textvariable=chev, bg=SURFACE2, fg=ACCENT2,
+                                 font=("Helvetica Neue", 13))
+                chlbl.pack(side="right", padx=16)
 
-                for w in [row] + list(row.winfo_children()):
-                    w.bind("<Button-1>", lambda e, t=_toggle: t())
+                # Antwoord (verborgen)
+                ans = tk.Frame(card, bg=_ANS_BG)
+                tk.Label(ans, text=a, bg=_ANS_BG, fg=_ANS_FG,
+                         font=("Helvetica Neue", 12),
+                         wraplength=430, justify="left",
+                         anchor="nw").pack(fill="x", padx=18, pady=(8, 16))
 
-            tk.Frame(inner, bg=BG, height=14).pack()
+                def _set_row_bg(c):
+                    row.config(bg=c); qlbl.config(bg=c); chlbl.config(bg=c)
+                    if not state["open"]:
+                        bar.config(bg=c)
+
+                def _toggle(e=None):
+                    state["open"] = not state["open"]
+                    if state["open"]:
+                        chev.set("▾")
+                        bar.config(bg=AVID_B)
+                        card.config(highlightbackground=AVID_B)
+                        ans.pack(fill="x")
+                    else:
+                        chev.set("▸")
+                        bar.config(bg=SURFACE2)
+                        card.config(highlightbackground=BORDER)
+                        ans.pack_forget()
+                    _relayout()
+                    cv.after(20, _relayout)   # opnieuw nadat de layout gezet is
+
+                def _enter(e=None):
+                    _set_row_bg(_HOVER)
+                    if not state["open"]:
+                        card.config(highlightbackground=AVID_B_H)
+                def _leave(e=None):
+                    _set_row_bg(SURFACE2)
+                    if not state["open"]:
+                        card.config(highlightbackground=BORDER)
+
+                for w in (row, bar, qlbl, chlbl):
+                    w.bind("<Button-1>", _toggle)
+                    w.bind("<Enter>", _enter)
+                    w.bind("<Leave>", _leave)
+
+            for q, a in FAQ:
+                _make_card(q, a)
+
+            tk.Frame(inner, bg=BG, height=16).pack()
             win.after(50, _frame_changed)
 
         # ── About-venster ────────────────────────────────────────────────────
@@ -2889,6 +3103,11 @@ class App:
             win.resizable(False, False)
             win.configure(bg=BG)
             win.geometry("340x280")
+            try:
+                if getattr(self, "_menubar", None):
+                    win.config(menu=self._menubar)
+            except Exception:
+                pass
             win.lift()
             win.focus_force()
             try:
@@ -3378,8 +3597,11 @@ class App:
             _menubar.add_cascade(label='Help', menu=_helpmenu)
 
             self.root.config(menu=_menubar)
+            self._menubar = _menubar   # zodat Toplevels dezelfde menubalk kunnen tonen
             self.root.createcommand('tk::mac::ShowAbout', _show_about)
             self.root.createcommand('tk::mac::ShowPreferences', self._show_prefs)
+            # macOS koppelt het systeem-Help-menu hieraan; open onze FAQ ipv "Help niet beschikbaar"
+            self.root.createcommand('tk::mac::ShowHelp', _show_faq)
         except Exception:
             pass
 
@@ -3534,6 +3756,11 @@ class App:
         win.resizable(False, False)
         win.configure(bg=BG)
         win.grab_set()
+        try:
+            if getattr(self, "_menubar", None):
+                win.config(menu=self._menubar)
+        except Exception:
+            pass
 
         PAD = 20
         ROW = 32
@@ -3567,9 +3794,11 @@ class App:
         CUSTOM = t("col_pick_placeholder")
 
         def _cb(parent, var, values):
+            # Bewerkbaar: kies uit de lijst óf typ zelf een exacte kolomnaam
+            # (matcht hoofdletterongevoelig op een bestaande Avid-kolom).
             all_values = list(values) + [CUSTOM]
             cb = ttk.Combobox(parent, textvariable=var, values=all_values,
-                              state="readonly", width=16,
+                              state="normal", width=16,
                               style="CB.TCombobox", font=("Helvetica Neue", 11))
             cb.pack(side="left")
             def _on_select(e):
@@ -3693,7 +3922,7 @@ class App:
         def _cb2(parent, var, values):
             CUSTOM = t("col_pick_placeholder")
             cb = ttk.Combobox(parent, textvariable=var, values=list(values) + [CUSTOM],
-                              state="readonly", width=16,
+                              state="normal", width=16,
                               style="CB.TCombobox", font=("Helvetica Neue", 11))
             cb.pack(side="left")
             cb.bind("<<ComboboxSelected>>",
@@ -3797,6 +4026,50 @@ class App:
             self.language.set(code)
             self._save_prefs_all()
         lang_cb.bind("<<ComboboxSelected>>", _on_lang_change)
+
+        # Wissen na verwerken: modus (Uit/Vragen/Automatisch) + vertraging in stappen van 5
+        r_clear = tk.Frame(body_lang, bg=BG)
+        r_clear.pack(fill="x", pady=3)
+        tk.Label(r_clear, text=t("prefs_clear_label"), bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11), width=24, anchor="w").pack(side="left")
+        _CLEAR_OPTS  = [t("clear_mode_uit"), t("clear_mode_vragen"), t("clear_mode_auto")]
+        _CLEAR_CODES = {t("clear_mode_uit"): "uit", t("clear_mode_vragen"): "vragen",
+                        t("clear_mode_auto"): "automatisch"}
+        _CLEAR_LABELS = {v: k for k, v in _CLEAR_CODES.items()}
+        _clear_disp = tk.StringVar(value=_CLEAR_LABELS.get(self.clear_mode.get(),
+                                                           t("clear_mode_vragen")))
+        clear_cb = ttk.Combobox(r_clear, textvariable=_clear_disp,
+                                values=_CLEAR_OPTS, state="readonly", width=12,
+                                style="CB.TCombobox", font=("Helvetica Neue", 11))
+        clear_cb.pack(side="left")
+
+        # Vertraging-selector (stappen van 5), alleen relevant bij Vragen/Automatisch
+        _delay_lbl = tk.Label(r_clear, text=t("prefs_clear_delay"), bg=BG, fg=MUTED,
+                              font=("Helvetica Neue", 10))
+        _delay_lbl.pack(side="left", padx=(10, 4))
+        _DELAYS = [str(s) for s in range(0, 61, 5)]
+        _delay_disp = tk.StringVar(value=str(self.clear_delay.get()))
+        delay_cb = ttk.Combobox(r_clear, textvariable=_delay_disp,
+                                values=_DELAYS, state="readonly", width=4,
+                                style="CB.TCombobox", font=("Helvetica Neue", 11))
+        delay_cb.pack(side="left")
+        tk.Label(r_clear, text=t("clear_delay_unit"), bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 10)).pack(side="left", padx=(4, 0))
+
+        def _sync_delay_state():
+            on = self.clear_mode.get() in ("vragen", "automatisch")
+            st = "readonly" if on else "disabled"
+            delay_cb.config(state=st)
+            _delay_lbl.config(fg=MUTED if on else BORDER)
+        def _on_clear_mode(e=None):
+            self.clear_mode.set(_CLEAR_CODES.get(_clear_disp.get(), "vragen"))
+            _sync_delay_state()
+        def _on_delay(e=None):
+            try: self.clear_delay.set(int(_delay_disp.get()))
+            except ValueError: pass
+        clear_cb.bind("<<ComboboxSelected>>", _on_clear_mode)
+        delay_cb.bind("<<ComboboxSelected>>", _on_delay)
+        _sync_delay_state()
 
         tk.Frame(win, bg=BORDER, height=1).pack(fill="x", padx=PAD, pady=(8, 0))
 
@@ -4254,6 +4527,7 @@ class App:
             self.log_box.config(state="normal")
             self.log_box.delete("1.0", "end")
             self.log_box.config(state="disabled")
+        self._clear_all = _clear_all  # ook bruikbaar buiten deze build-functie
 
         clear_cv = _rounded_btn(hint_row, t("btn_clear_all"), _clear_all,
                                 bg=SURFACE2, hv=BORDER, fg=MUTED,
@@ -4409,8 +4683,8 @@ class App:
 
         status_lbl = tk.Label(status_row,
                               text=t("file_drop_hint"),
-                              bg=SURFACE, fg=MUTED,
-                              font=("Helvetica Neue", 10), anchor="w")
+                              bg=SURFACE, fg="#A99CDC",
+                              font=("Helvetica Neue", 11), anchor="w")
         status_lbl.pack(side="left", fill="x", expand=True)
 
         pick_fn = self._pick_ale if file_type == "ALE" else self._pick_pdf
@@ -4685,6 +4959,17 @@ class App:
             n_ale = len(out_paths)
             self.log(t("log_done_one") if n_ale == 1 else t("log_done_many", n=n_ale), "ok")
             if out_paths:
+                # Na verwerken velden wissen: Uit / Vragen / Automatisch, na instelbare vertraging
+                _mode  = self.clear_mode.get()
+                _delay = max(0, int(self.clear_delay.get())) * 1000
+                if _mode in ("vragen", "automatisch"):
+                    def _do_clear():
+                        if getattr(self, "_clear_all", None):
+                            self._clear_all()
+                    if _mode == "automatisch":
+                        self.root.after(_delay, _do_clear)
+                    else:
+                        self.root.after(_delay, lambda: self._ask_clear_dialog(_do_clear))
                 import subprocess, sys as _sys
                 folder = str(out_paths[0].parent)
                 try:
@@ -4703,6 +4988,34 @@ class App:
                 self._btn_enabled = True
                 self._draw_verwerk()
             self.root.after(0, _re_enable)
+
+    def _ask_clear_dialog(self, on_clear):
+        """Vraag of de velden gewist mogen worden: knoppen 'Wis' / 'Laat staan'."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title(t("ask_clear_title"))
+        dlg.configure(bg=BG)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        tk.Label(dlg, text=t("ask_clear_msg"), bg=BG, fg=TEXT,
+                 font=("Helvetica Neue", 12), wraplength=320,
+                 justify="left").pack(padx=24, pady=(22, 16))
+        btn_row = tk.Frame(dlg, bg=BG)
+        btn_row.pack(anchor="e", padx=24, pady=(0, 18))
+        def _keep():
+            dlg.destroy()
+        def _clear():
+            dlg.destroy()
+            on_clear()
+        _rounded_btn(btn_row, t("btn_clear_no"), _keep,
+                     bg=SURFACE2, hv=SURFACE, fg=TEXT,
+                     font=("Helvetica Neue", 11), px=16, py=6, r=8, pbg=BG).pack(side="left", padx=(0, 8))
+        _rounded_btn(btn_row, t("btn_clear_yes"), _clear,
+                     bg=AVID_B, hv="#2a6fbd", fg="white",
+                     font=("Helvetica Neue", 11, "bold"), px=16, py=6, r=8, pbg=BG).pack(side="left")
+        dlg.update_idletasks()
+        mw = self.root.winfo_x() + self.root.winfo_width()  // 2
+        mh = self.root.winfo_y() + self.root.winfo_height() // 2
+        dlg.geometry(f"+{mw - dlg.winfo_width()//2}+{mh - dlg.winfo_height()//2}")
 
     def log(self, msg, tag="info"):
         def _do():
