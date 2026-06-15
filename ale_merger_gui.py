@@ -878,7 +878,8 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
                 pu_col="Auto", pu_position="voor",
                 pu_eigen_kolom=False, pu_eigen_kolom_naam="PU",
                 afg_col="Auto", afg_position="voor",
-                general_notes_col="Auto", star_format="sterren"):
+                general_notes_col="Auto", star_format="sterren",
+                scene_col="Auto"):
     with open(ale_path, "rb") as f:
         raw = f.read()
 
@@ -915,7 +916,18 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
 
     name_idx  = idx("Name")
     tape_idx  = idx("Tape")
-    scene_idx = idx("Scene")       # alleen bijwerken als al aanwezig
+    # Scene-doelkolom: "Uit" = niet schrijven (bewaar originele bin-scene),
+    # "Auto" = bestaande Scene-kolom bijwerken, anders gekozen/nieuwe kolom.
+    if scene_col in ("Uit", "Off", "Aus", ""):
+        scene_idx = None
+    elif scene_col and scene_col != "Auto":
+        scene_idx = idx(scene_col)
+        if scene_idx is None:
+            col_headers.append(scene_col)
+            scene_idx = len(col_headers) - 1
+            log(f"Kolom '{scene_col}' niet gevonden — toegevoegd aan ALE.", "info")
+    else:
+        scene_idx = idx("Scene")   # alleen bijwerken als al aanwezig
     desc_idx  = idx("Description") # alleen bijwerken als al aanwezig
 
     # Tracks-kolom is verplicht voor Avid ALE-import — voeg toe als afwezig
@@ -1346,7 +1358,7 @@ _patch_nsmenuitem_for_macos15plus()
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.3.7 (Beta)"
+VERSION       = "1.3.8 (Beta)"
 
 # ── Vertalingen ────────────────────────────────────────────────────────────────
 STRINGS: dict[str, dict[str, str]] = {
@@ -1395,6 +1407,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_section_per_take":  "PER TAKE",
         "prefs_section_general":   "ALGEMENE OPMERKINGEN PER SLATE",
         "prefs_notes":             "Notes",
+        "prefs_scene":             "Scene",
         "prefs_rating":            "Rating",
         "prefs_stars_as":          "sterren als:",
         "prefs_stars_stars":       "sterren (***)",
@@ -1413,6 +1426,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_output_dir":        "Uitvoermap",
         "prefs_output_dir_hint":   "(leeg = zelfde map als ALE)",
         "prefs_filename":          "Bestandsnaam",
+        "prefs_filename_orig":     "{originele naam}",
         "btn_close":               "Sluit",
         "btn_choose_dir":          "Kies…",
         "prefs_lang_label":        "Taal / Language / Sprache",
@@ -1611,6 +1625,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_section_per_take":  "PER TAKE",
         "prefs_section_general":   "GENERAL NOTES PER SLATE",
         "prefs_notes":             "Notes",
+        "prefs_scene":             "Scene",
         "prefs_rating":            "Rating",
         "prefs_stars_as":          "stars as:",
         "prefs_stars_stars":       "stars (***)",
@@ -1629,6 +1644,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_output_dir":        "Output folder",
         "prefs_output_dir_hint":   "(empty = same folder as ALE)",
         "prefs_filename":          "Filename",
+        "prefs_filename_orig":     "{original name}",
         "btn_close":               "Close",
         "btn_choose_dir":          "Choose…",
         "prefs_lang_label":        "Taal / Language / Sprache",
@@ -1827,6 +1843,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_section_per_take":  "PRO TAKE",
         "prefs_section_general":   "ALLGEMEINE ANMERKUNGEN PRO SLATE",
         "prefs_notes":             "Notizen",
+        "prefs_scene":             "Szene",
         "prefs_rating":            "Bewertung",
         "prefs_stars_as":          "Sterne als:",
         "prefs_stars_stars":       "Sterne (***)",
@@ -1845,6 +1862,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_output_dir":        "Ausgabeordner",
         "prefs_output_dir_hint":   "(leer = gleicher Ordner wie ALE)",
         "prefs_filename":          "Dateiname",
+        "prefs_filename_orig":     "{originalname}",
         "btn_close":               "Schließen",
         "btn_choose_dir":          "Wählen…",
         "prefs_lang_label":        "Taal / Language / Sprache",
@@ -2382,6 +2400,8 @@ _PREFS_DEFAULTS = {
     "afg_position":       "voor",
     "write_general_notes": False,
     "general_notes_col":  "Camera_Notes",
+    "write_scene":        True,
+    "scene_col":          "Auto",
     "language":           "en",
     "clear_mode":         "vragen",   # "uit" | "vragen" | "automatisch"
     "clear_delay":        5,          # seconden, in stappen van 5
@@ -2531,6 +2551,8 @@ class App:
         self.afg_position       = tk.StringVar(value=_p.get("afg_position", "voor"))
         self.write_general_notes = tk.BooleanVar(value=_p.get("write_general_notes", False))
         self.general_notes_col  = tk.StringVar(value=_p.get("general_notes_col", "Camera_Notes"))
+        self.write_scene        = tk.BooleanVar(value=_p.get("write_scene", True))
+        self.scene_col          = tk.StringVar(value=_p.get("scene_col", "Auto"))
         self.language           = tk.StringVar(value=_p.get("language", "en"))
         self.clear_mode         = tk.StringVar(value=_p.get("clear_mode", "vragen"))
         self.clear_delay        = tk.IntVar(value=_p.get("clear_delay", 5))
@@ -2561,6 +2583,8 @@ class App:
                 "afg_position":       self.afg_position.get(),
                 "write_general_notes": self.write_general_notes.get(),
                 "general_notes_col":  self.general_notes_col.get(),
+                "write_scene":        self.write_scene.get(),
+                "scene_col":          self.scene_col.get(),
                 "language":           self.language.get(),
                 "clear_mode":         self.clear_mode.get(),
                 "clear_delay":        self.clear_delay.get(),
@@ -2593,6 +2617,8 @@ class App:
         self.afg_position      .trace_add("write", _on_pref_change)
         self.write_general_notes.trace_add("write", _on_pref_change)
         self.general_notes_col .trace_add("write", _on_pref_change)
+        self.write_scene       .trace_add("write", _on_pref_change)
+        self.scene_col         .trace_add("write", _on_pref_change)
         self.clear_mode.trace_add("write", _on_pref_change)
         self.clear_delay.trace_add("write", _on_pref_change)
         self.root.title(t("wintitle_main"))
@@ -3819,6 +3845,16 @@ class App:
                  font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
         _cb(r2, self.notes_col, self.NOTES_COLS)
 
+        # Scene: checkbox + "→" + kolom-dropdown (vink uit = originele Scene niet overschrijven)
+        r_scene = _row(t("prefs_scene"))
+        tk.Checkbutton(r_scene, variable=self.write_scene,
+                       bg=BG, fg=TEXT, selectcolor=SURFACE2,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+        tk.Label(r_scene, text="→", bg=BG, fg=MUTED,
+                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+        _cb(r_scene, self.scene_col, ["Auto", "Scene"])
+
         # Rating: checkbox + "→" + kolom-dropdown + format (sterren/***/cijfer)
         r1 = _row(t("prefs_rating"))
         tk.Checkbutton(r1, variable=self.write_rating,
@@ -3991,7 +4027,7 @@ class App:
         r4b.pack(fill="x", pady=4)
         tk.Label(r4b, text=t("prefs_filename"), bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 11), width=18, anchor="w").pack(side="left")
-        tk.Label(r4b, text="{originele naam}", bg=BG, fg=MUTED,
+        tk.Label(r4b, text=t("prefs_filename_orig"), bg=BG, fg=MUTED,
                  font=("Helvetica Neue", 10)).pack(side="left")
         tk.Entry(r4b, textvariable=self.output_suffix, width=20,
                  bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
@@ -4912,11 +4948,14 @@ class App:
                                      afg_position=self.afg_position.get(),
                                      general_notes_col=(self.general_notes_col.get()
                                                         if self.write_general_notes.get() else "Uit"),
-                                     star_format=self.star_format.get())
+                                     star_format=self.star_format.get(),
+                                     scene_col=(self.scene_col.get()
+                                                if self.write_scene.get() else "Uit"))
                 stem    = Path(ale_p).stem
                 out_dir = Path(_out_dir) if _out_dir else Path(ale_p).parent
                 out     = out_dir / f"{stem}{_out_suffix}.ALE"
-                # ALE verwacht Latin-1; normaliseer Unicode → ASCII/Latin-1
+                # ALE wordt als UTF-8 weggeschreven zodat accenten/umlauten (ä ö ü enz.)
+                # intact blijven. Avid leest UTF-8-ALE's correct (UTF-8 Encoding aan bij export).
                 _UNICODE_MAP = {
                     '‘': "'", '’': "'",   # curly single quotes → '
                     '“': '"', '”': '"',   # curly double quotes → "
@@ -4936,17 +4975,10 @@ class App:
                         if c in _UNICODE_MAP:
                             out.append(_UNICODE_MAP[c])
                             continue
-                        try:
-                            c.encode('latin-1')
-                            out.append(c)
-                        except UnicodeEncodeError:
-                            name = _ud.name(c, '').lower()
-                            # Versimpel veelvoorkomende namen
-                            name = re.sub(r'\b(heavy|black|white|red|medium|large|small)\b\s*', '', name).strip()
-                            name = name.replace(' sign', '').replace(' mark', '').strip()
-                            out.append(f'({name})')
+                        # Alle overige tekens (incl. accenten/umlauten) blijven intact in UTF-8
+                        out.append(c)
                     return ''.join(out)
-                result_bytes = _ale_safe(result).encode("latin-1", errors="replace")
+                result_bytes = _ale_safe(result).encode("utf-8")
                 try:
                     out_dir.mkdir(parents=True, exist_ok=True)
                     out.write_bytes(result_bytes)
