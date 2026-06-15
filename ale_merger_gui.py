@@ -4484,14 +4484,14 @@ rm -rf "$STAGE"
             row = tk.Frame(parent, bg=BG)
             row.pack(fill="x", pady=(0, 7))
             # Badge: klein paars vierkantje met nummer
-            badge = tk.Canvas(row, width=18, height=18, bg=BG,
+            badge = tk.Canvas(row, width=20, height=20, bg=BG,
                               bd=0, highlightthickness=0)
             badge.pack(side="left", padx=(0, 8))
-            badge.create_rectangle(0, 0, 18, 18, fill=AVID_B, outline="")
-            badge.create_text(9, 9, text=str(number), fill="white",
-                              font=("Helvetica Neue", 9, "bold"))
+            badge.create_rectangle(0, 0, 20, 20, fill=AVID_B, outline="")
+            badge.create_text(10, 10, text=str(number), fill="white",
+                              font=("Helvetica Neue", 11, "bold"))
             tk.Label(row, text=text.upper(), bg=BG, fg=MUTED,
-                     font=("Helvetica Neue", 9, "bold"), anchor="w").pack(side="left")
+                     font=("Helvetica Neue", 11, "bold"), anchor="w").pack(side="left")
 
         _section_label(body, 1, t("section_ale"))
         self._multi_file_widget(body, self.ale_paths, "ALE").pack(fill="x", pady=(0, 14))
@@ -4512,7 +4512,7 @@ rm -rf "$STAGE"
                         foreground=TEXT, selectbackground=AVID_B,
                         selectforeground="white", arrowcolor=TEXT,
                         bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER,
-                        insertcolor=TEXT, relief="flat", padding=4)
+                        insertcolor=TEXT, relief="flat", padding=6)
         style.map("CB.TCombobox",
                   fieldbackground=[("readonly", SURFACE2)],
                   foreground=[("readonly", TEXT)],
@@ -4524,7 +4524,7 @@ rm -rf "$STAGE"
         self.root.option_add("*TCombobox*Listbox.foreground",       TEXT)
         self.root.option_add("*TCombobox*Listbox.selectBackground", AVID_B)
         self.root.option_add("*TCombobox*Listbox.selectForeground", "white")
-        self.root.option_add("*TCombobox*Listbox.font",             "{{Helvetica Neue} 11}")
+        self.root.option_add("*TCombobox*Listbox.font",             "{{Helvetica Neue} 12}")
         self.root.option_add("*TCombobox*Listbox.relief",           "flat")
         self.root.option_add("*TCombobox*Listbox.borderWidth",      "0")
 
@@ -4540,7 +4540,7 @@ rm -rf "$STAGE"
             cb = ttk.Combobox(parent, textvariable=var,
                               values=_make_col_values(recent_key),
                               state="readonly", width=width,
-                              style="CB.TCombobox", font=("Helvetica Neue", 11))
+                              style="CB.TCombobox", font=("Helvetica Neue", 12))
             cb.pack(side="left", fill="x", expand=True)
             def _on_select(e):
                 if var.get() == PICK:
@@ -4574,7 +4574,7 @@ rm -rf "$STAGE"
         hint_lbl = tk.Label(hint_row,
                             text=t("hint_more_settings"),
                             bg=BG, fg=MUTED,
-                            font=("Helvetica Neue", 10), cursor="arrow", anchor="w")
+                            font=("Helvetica Neue", 11), cursor="arrow", anchor="w")
         hint_lbl.pack(side="left", fill="x", expand=True)
         hint_lbl.bind("<Button-1>", lambda e: self._show_prefs())
         hint_lbl.bind("<Enter>",    lambda e: hint_lbl.config(fg=TEXT))
@@ -4593,12 +4593,12 @@ rm -rf "$STAGE"
 
         clear_cv = _rounded_btn(hint_row, t("btn_clear_all"), _clear_all,
                                 bg=SURFACE2, hv=BORDER, fg=MUTED,
-                                font=("Helvetica Neue", 10), px=10, py=3, r=8, pbg=BG)
+                                font=("Helvetica Neue", 11), px=11, py=4, r=8, pbg=BG)
         clear_cv.pack(side="right")
 
         # ── Verwerk-knop (afgeronde Canvas, full-width) ──────────────────────
-        _VF = ("Helvetica Neue", 14, "bold")
-        _VH = 48   # hoogte
+        _VF = ("Helvetica Neue", 16, "bold")
+        _VH = 52   # hoogte
         _VR = 12   # hoek-radius
         self._btn_enabled = True
         self.btn = tk.Canvas(body, height=_VH, bd=0, highlightthickness=0, bg=BG, cursor="arrow")
@@ -4655,7 +4655,7 @@ rm -rf "$STAGE"
         log_frame.pack(fill="both", expand=True)
 
         self.log_box = tk.Text(log_frame, bg=SURFACE, fg=MUTED,
-            font=("Menlo", 10), relief="flat", bd=0, highlightthickness=0,
+            font=("Menlo", 11), relief="flat", bd=0, highlightthickness=0,
             padx=14, pady=12, wrap="word", state="disabled", height=5,
             cursor="arrow")
 
@@ -4752,7 +4752,7 @@ rm -rf "$STAGE"
         pick_fn = self._pick_ale if file_type == "ALE" else self._pick_pdf
         add_cv  = _rounded_btn(status_row, t("btn_choose"), pick_fn,
                                bg=SURFACE2, hv=BORDER, fg=TEXT,
-                               font=("Helvetica Neue", 10), px=10, py=3, r=6,
+                               font=("Helvetica Neue", 11), px=11, py=4, r=6,
                                pbg=SURFACE)
         add_cv.pack(side="right")
 
@@ -4785,7 +4785,7 @@ rm -rf "$STAGE"
 
                     # Bestandsnaam
                     tk.Label(row, text=Path(p).name, bg=SURFACE, fg=TEXT,
-                             font=("Helvetica Neue", 10), anchor="w").pack(
+                             font=("Helvetica Neue", 11), anchor="w").pack(
                                  side="left", fill="x", expand=True)
 
                     # × verwijderknop
