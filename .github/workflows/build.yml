@@ -44,6 +44,8 @@ jobs:
 
       - name: Create DMG
         run: |
+          VER=$(grep "^VERSION" ale_merger_gui.py | grep -o '[0-9][0-9.]*' | head -1)
+          echo "VER=$VER" >> "$GITHUB_ENV"
           brew install create-dmg || true
           create-dmg \
             --volname "Continuity Bridge" \
@@ -53,22 +55,22 @@ jobs:
             --icon "Continuity Bridge.app" 175 190 \
             --hide-extension "Continuity Bridge.app" \
             --app-drop-link 425 190 \
-            "ContinuityBridge-Silicon.dmg" \
+            "ContinuityBridge-Silicon-${VER}.dmg" \
             "dist/Continuity Bridge.app" \
           || hdiutil create -volname "Continuity Bridge" \
                -srcfolder "dist/Continuity Bridge.app" \
-               -ov -format UDZO "ContinuityBridge-Silicon.dmg"
+               -ov -format UDZO "ContinuityBridge-Silicon-${VER}.dmg"
 
       - uses: actions/upload-artifact@v4
         with:
           name: ContinuityBridge-Silicon
-          path: ContinuityBridge-Silicon.dmg
+          path: ContinuityBridge-Silicon-*.dmg
 
       - name: Upload to release
         if: github.event.inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.event.inputs.release_tag }}" ContinuityBridge-Silicon.dmg --clobber
+        run: gh release upload "${{ github.event.inputs.release_tag }}" ContinuityBridge-Silicon-*.dmg --clobber
 
   # ── macOS Intel (x86_64) ───────────────────────────────────────────────────
   build-macos-intel:
@@ -96,6 +98,8 @@ jobs:
 
       - name: Create DMG
         run: |
+          VER=$(grep "^VERSION" ale_merger_gui.py | grep -o '[0-9][0-9.]*' | head -1)
+          echo "VER=$VER" >> "$GITHUB_ENV"
           brew install create-dmg || true
           create-dmg \
             --volname "Continuity Bridge" \
@@ -105,22 +109,22 @@ jobs:
             --icon "Continuity Bridge.app" 175 190 \
             --hide-extension "Continuity Bridge.app" \
             --app-drop-link 425 190 \
-            "ContinuityBridge-Intel.dmg" \
+            "ContinuityBridge-Intel-${VER}.dmg" \
             "dist/Continuity Bridge.app" \
           || hdiutil create -volname "Continuity Bridge" \
                -srcfolder "dist/Continuity Bridge.app" \
-               -ov -format UDZO "ContinuityBridge-Intel.dmg"
+               -ov -format UDZO "ContinuityBridge-Intel-${VER}.dmg"
 
       - uses: actions/upload-artifact@v4
         with:
           name: ContinuityBridge-Intel
-          path: ContinuityBridge-Intel.dmg
+          path: ContinuityBridge-Intel-*.dmg
 
       - name: Upload to release
         if: github.event.inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.event.inputs.release_tag }}" ContinuityBridge-Intel.dmg --clobber
+        run: gh release upload "${{ github.event.inputs.release_tag }}" ContinuityBridge-Intel-*.dmg --clobber
 
   # ── Windows (x86_64) ───────────────────────────────────────────────────────
   build-windows:
@@ -184,7 +188,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ContinuityBridge-Silicon/ContinuityBridge-Silicon.dmg
-            ContinuityBridge-Intel/ContinuityBridge-Intel.dmg
-            ContinuityBridge-Windows/ContinuityBridge.exe
+            ContinuityBridge-Silicon/ContinuityBridge-Silicon-*.dmg
+            ContinuityBridge-Intel/ContinuityBridge-Intel-*.dmg
+            ContinuityBridge-Windows/*.exe
           generate_release_notes: true
