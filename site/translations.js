@@ -123,6 +123,15 @@ const TRANSLATIONS = {
     dl_silicon_alt: 'Oudere Intel Mac? <a href="download.html?platform=intel" style="color:var(--accent);text-decoration:underline;">Download Intel versie</a>',
     dl_intel_alt:   'Apple Silicon Mac? <a href="download.html?platform=silicon" style="color:var(--accent);text-decoration:underline;">Download Silicon versie</a>',
 
+    cl_page_tag:     'Versiegeschiedenis',
+    cl_title:        'Wat is er nieuw?',
+    cl_subtitle:     'Alle updates van Continuity Bridge, van nieuw naar oud.',
+    cl_new:          'Nieuw',
+    cl_improve:      'Verbeteringen',
+    cl_fix:          'Bugfixes',
+    cl_badge_latest: 'Nieuwste',
+    cl_badge_beta:   'Beta',
+
     footer: '© 2026 Studio Michiel Boesveldt · Continuity Bridge',
   },
 
@@ -250,6 +259,15 @@ const TRANSLATIONS = {
     dl_silicon_alt: 'Older Intel Mac? <a href="download.html?platform=intel" style="color:var(--accent);text-decoration:underline;">Download Intel version</a>',
     dl_intel_alt:   'Apple Silicon Mac? <a href="download.html?platform=silicon" style="color:var(--accent);text-decoration:underline;">Download Silicon version</a>',
 
+    cl_page_tag:     'Version history',
+    cl_title:        'What\'s new?',
+    cl_subtitle:     'All Continuity Bridge updates, newest first.',
+    cl_new:          'New',
+    cl_improve:      'Improvements',
+    cl_fix:          'Bug fixes',
+    cl_badge_latest: 'Latest',
+    cl_badge_beta:   'Beta',
+
     footer: '© 2026 Studio Michiel Boesveldt · Continuity Bridge',
   },
 
@@ -376,6 +394,15 @@ const TRANSLATIONS = {
 
     dl_silicon_alt: 'Älterer Intel Mac? <a href="download.html?platform=intel" style="color:var(--accent);text-decoration:underline;">Intel-Version herunterladen</a>',
     dl_intel_alt:   'Apple Silicon Mac? <a href="download.html?platform=silicon" style="color:var(--accent);text-decoration:underline;">Silicon-Version herunterladen</a>',
+
+    cl_page_tag:     'Versionsverlauf',
+    cl_title:        'Was ist neu?',
+    cl_subtitle:     'Alle Updates von Continuity Bridge, neueste zuerst.',
+    cl_new:          'Neu',
+    cl_improve:      'Verbesserungen',
+    cl_fix:          'Fehlerbehebungen',
+    cl_badge_latest: 'Neueste',
+    cl_badge_beta:   'Beta',
 
     footer: '© 2026 Studio Michiel Boesveldt · Continuity Bridge',
   },

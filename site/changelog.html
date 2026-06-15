@@ -101,6 +101,69 @@
 
     .btn-nav:hover { background: var(--accent2); }
 
+    .nav-right { display: flex; align-items: center; gap: 16px; }
+
+    /* ── Language dropdown ── */
+    .lang-dropdown { position: relative; }
+
+    .lang-trigger {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: var(--body);
+      font-size: 18px;
+      padding: 5px 9px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: border-color 0.15s;
+      line-height: 1;
+    }
+
+    .lang-trigger:hover { border-color: var(--border2); }
+
+    .lang-trigger-arrow { font-size: 9px; color: var(--dim); margin-top: 1px; }
+
+    .lang-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 6px;
+      min-width: 130px;
+      z-index: 200;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+
+    .lang-dropdown.open .lang-menu { display: block; }
+
+    .lang-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      background: none;
+      border: none;
+      border-radius: 6px;
+      color: var(--muted);
+      font-family: var(--body);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 10px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.1s;
+    }
+
+    .lang-option:hover { background: var(--surface2); color: var(--text); }
+    .lang-option.active { color: var(--text); font-weight: 600; }
+    .lang-option .flag { font-size: 18px; line-height: 1; }
+
     /* ── Page ── */
     .page {
       position: relative;
@@ -308,329 +371,113 @@
       <img src="/cbapp/logo.png" alt="Continuity Bridge" />
       <span class="nav-logo-text">Continuity Bridge</span>
     </a>
-    <div>
-      <a class="btn-nav" href="/cbapp/download.html">Download</a>
+    <div class="nav-right">
+      <div class="lang-dropdown" id="langDropdown">
+        <button class="lang-trigger" id="langTrigger" onclick="toggleLangMenu()">
+          <span id="langFlag">🇳🇱</span>
+          <span class="lang-trigger-arrow">▾</span>
+        </button>
+        <div class="lang-menu" id="langMenu">
+          <button class="lang-option active" data-lang="nl" onclick="selectLang('nl')"><span class="flag">🇳🇱</span> Nederlands</button>
+          <button class="lang-option" data-lang="en" onclick="selectLang('en')"><span class="flag">🇬🇧</span> English</button>
+          <button class="lang-option" data-lang="de" onclick="selectLang('de')"><span class="flag">🇩🇪</span> Deutsch</button>
+        </div>
+      </div>
+      <a class="btn-nav" href="/cbapp/download.html" data-i18n="nav_download">Download</a>
     </div>
   </nav>
 
   <div class="page">
-    <div class="page-tag">Versiegeschiedenis</div>
-    <h1>Wat is er nieuw?</h1>
-    <p class="subtitle">Alle updates van Continuity Bridge, van nieuw naar oud.</p>
+    <div class="page-tag" data-i18n="cl_page_tag">Versiegeschiedenis</div>
+    <h1 data-i18n="cl_title">Wat is er nieuw?</h1>
+    <p class="subtitle" data-i18n="cl_subtitle">Alle updates van Continuity Bridge, van nieuw naar oud.</p>
 
-    <div class="timeline">
-
-      <!-- v1.3.8 -->
-      <div class="release latest">
-        <div class="release-meta">
-          <div class="release-version">v1.3.8</div>
-          <div class="release-date">12 juni 2026</div>
-          <span class="release-badge badge-latest">Nieuwste</span>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">Scene-kolom & Duitse tekens</div>
-          <div class="change-group">
-            <div class="change-group-label label-new">Nieuw</div>
-            <ul class="change-list">
-              <li><strong>Scene-doelkolom instelbaar</strong> — kies of CB scene-info in bestaande Scene-kolom schrijft, in eigen kolom, of helemaal niet</li>
-              <li><strong>Volledig meertalig label</strong> — het "{originele naam}"-veld bij Bestandsnaam volgt nu de gekozen taal (NL/EN/DE)</li>
-            </ul>
-          </div>
-          <div class="change-group">
-            <div class="change-group-label label-improve">Verbeteringen</div>
-            <ul class="change-list">
-              <li>Correcte weergave van accenten en umlauten — Duitse en speciale tekens (ä ö ü Ä Ö Ü, etc.) blijven intact bij import in Avid (UTF-8 output)</li>
-              <li>Betrouwbaardere in-app update — "Update & Herstart" vervangt app nu veilig na afsluiten i.p.v. tijdens het draaien</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- v1.3.7 -->
-      <div class="release">
-        <div class="release-meta">
-          <div class="release-version">v1.3.7</div>
-          <div class="release-date">9 juni 2026</div>
-          <span class="release-badge badge-beta">Beta</span>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">Schonere ALE-export & betere FAQ</div>
-          <div class="change-group">
-            <div class="change-group-label label-new">Nieuw</div>
-            <ul class="change-list">
-              <li><strong>Ontbrekende Tracks-kolom</strong> wordt automatisch toegevoegd</li>
-              <li><strong>Optie "Wissen na verwerken"</strong> — Uit / Vragen / Automatisch, met instelbare vertraging</li>
-              <li><strong>Kolomnamen vrij invulbaar</strong> in Voorkeuren</li>
-              <li><strong>Vernieuwde FAQ</strong> met nieuwe onderwerpen (ALE exporteren uit Avid, uitleg over "Merge?"-melding) en directe link naar bugrapport</li>
-            </ul>
-          </div>
-          <div class="change-group">
-            <div class="change-group-label label-improve">Verbeteringen</div>
-            <ul class="change-list">
-              <li>Lege camera- en metadatakolommen worden automatisch verwijderd — elimineert Avid-importfouten ("syntax error in timecode field" / "invalid tracks")</li>
-              <li>Rating-kolom wordt automatisch opgeschoond, alleen jouw V/X-waarden blijven</li>
-              <li>Notitiekolom wordt netjes afgehandeld — geen import-problemen meer met Take_notes</li>
-              <li>Diverse verbeteringen aan leesbaarheid en interface</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- v1.3.6 -->
-      <div class="release">
-        <div class="release-meta">
-          <div class="release-version">v1.3.6</div>
-          <div class="release-date">9 juni 2026</div>
-          <span class="release-badge badge-beta">Beta</span>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">Intel-Mac support & Unicode handling</div>
-          <div class="change-group">
-            <div class="change-group-label label-new">Nieuw</div>
-            <ul class="change-list">
-              <li><strong>PU als eigen kolom</strong> wegschrijven</li>
-            </ul>
-          </div>
-          <div class="change-group">
-            <div class="change-group-label label-improve">Verbeteringen</div>
-            <ul class="change-list">
-              <li>Drag-and-drop werkt nu ook op <strong>Intel-Macs</strong> (en Silicon)</li>
-              <li>Veilige verwerking van speciale tekens (<strong>Unicode</strong>) in ALE's</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- v1.3.5 -->
-      <div class="release">
-        <div class="release-meta">
-          <div class="release-version">v1.3.5</div>
-          <div class="release-date">4 juni 2026</div>
-          <span class="release-badge badge-beta">Beta</span>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">Meertalig & Duitse editor-logs</div>
-          <div class="change-group">
-            <div class="change-group-label label-new">Nieuw</div>
-            <ul class="change-list">
-              <li><strong>Meertalig</strong> — Nederlands, Engels en Duits (instelbaar via Voorkeuren)</li>
-              <li><strong>Duitse editors-log</strong> rapportformaat ondersteund</li>
-              <li><strong>Rating als letters</strong> (A/B/C/D/E) als extra optie naast sterren</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- v1.3.4 -->
-      <div class="release">
-        <div class="release-meta">
-          <div class="release-version">v1.3.4</div>
-          <div class="release-date">4 juni 2026</div>
-          <span class="release-badge badge-beta">Beta</span>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">Update dialog fix</div>
-          <div class="change-group">
-            <div class="change-group-label label-fix">Bugfixes</div>
-            <ul class="change-list">
-              <li>Knop in update-dialoogvenster was niet klikbaar op <strong>Canvas</strong> — opgelost</li>
-              <li>Bevat alle fixes uit v1.3.3</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- v1.3.3 -->
-      <div class="release">
-        <div class="release-meta">
-          <div class="release-version">v1.3.3</div>
-          <div class="release-date">4 juni 2026</div>
-          <span class="release-badge badge-beta">Beta</span>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">Stabiliteit & parsing fixes</div>
-          <div class="change-group">
-            <div class="change-group-label label-fix">Bugfixes</div>
-            <ul class="change-list">
-              <li>Crash in NSMenuItem bij bepaalde menu-interacties opgelost</li>
-              <li><strong>Take 4-parsing</strong> met non-ASCII tekens werkt nu correct</li>
-              <li>Drag & drop toont nu een duidelijkere foutmelding als het bestand niet herkend wordt</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- v1.3.2 -->
-      <div class="release">
-        <div class="release-meta">
-          <div class="release-version">v1.3.2</div>
-          <div class="release-date">4 juni 2026</div>
-          <span class="release-badge badge-beta">Beta</span>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">Stabiliteitsfixes</div>
-          <div class="change-group">
-            <div class="change-group-label label-fix">Bugfixes</div>
-            <ul class="change-list">
-              <li>SSL-certificaatfout bij update-check op <strong>Intel Macs</strong> opgelost</li>
-              <li>Rapporten in <strong>TDDOS- en D&N-formaat</strong> worden nu correct herkend</li>
-              <li>Kolomnamen zijn niet meer hoofdlettergevoelig — <strong>Notes</strong> en <strong>notes</strong> worden nu als hetzelfde herkend</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- v1.3.1 -->
-      <div class="release">
-        <div class="release-meta">
-          <div class="release-version">v1.3.1</div>
-          <div class="release-date">4 juni 2026</div>
-          <span class="release-badge badge-beta">Beta</span>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">Hotfix</div>
-          <div class="change-group">
-            <div class="change-group-label label-fix">Bugfixes</div>
-            <ul class="change-list">
-              <li>Crashfix bij opstarten op <strong>macOS 26</strong></li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- v1.3 -->
-      <div class="release">
-        <div class="release-meta">
-          <div class="release-version">v1.3</div>
-          <div class="release-date">29 mei 2026</div>
-          <span class="release-badge badge-beta">Beta</span>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">FAQ, layout mapper & macOS 26</div>
-          <div class="change-group">
-            <div class="change-group-label label-new">Nieuw</div>
-            <ul class="change-list">
-              <li><strong>FAQ in de app</strong> — Help → FAQ opent een venster met veelgestelde vragen</li>
-              <li><strong>Layout mapper</strong> — onbekend PDF-formaat? Wijs zelf kolommen toe en sla de indeling lokaal op</li>
-              <li><strong>Uitleg Apple-beveiliging</strong> — stap-voor-stap screenshots in de FAQ voor de macOS-beveiligingswaarschuwing</li>
-            </ul>
-          </div>
-          <div class="change-group">
-            <div class="change-group-label label-fix">Bugfixes</div>
-            <ul class="change-list">
-              <li>Crash op <strong>macOS 26</strong> opgelost (NSAssertionHandler + NSString retain-fix)</li>
-              <li>Drag & Drop werkt nu correct in de gebouwde app (pyobjc gebundeld)</li>
-              <li>Interne formaataanduiding verwijderd uit zichtbaar gebruikerslog</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- v1.2.1 -->
-      <div class="release">
-        <div class="release-meta">
-          <div class="release-version">v1.2.1</div>
-          <div class="release-date">27 mei 2026</div>
-          <span class="release-badge badge-beta">Beta</span>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">In-app updater & activatiecheck</div>
-          <div class="change-group">
-            <div class="change-group-label label-new">Nieuw</div>
-            <ul class="change-list">
-              <li><strong>In-app updater</strong> — update direct vanuit de app, inclusief voortgangsbalk en automatisch herstarten</li>
-              <li><strong>Server-side activatiecheck</strong> — een serial kan niet meer op meerdere machines tegelijk worden gebruikt</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- v1.2 -->
-      <div class="release">
-        <div class="release-meta">
-          <div class="release-version">v1.2</div>
-          <div class="release-date">27 mei 2026</div>
-          <span class="release-badge badge-beta">Beta</span>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">Automatische licentielevering</div>
-          <div class="change-group">
-            <div class="change-group-label label-new">Nieuw</div>
-            <ul class="change-list">
-              <li><strong>Automatische licentielevering via Mollie</strong> — serial direct per e-mail na betaling</li>
-            </ul>
-          </div>
-          <div class="change-group">
-            <div class="change-group-label label-fix">Bugfixes</div>
-            <ul class="change-list">
-              <li>Kolom-dropdown sluit nu correct wanneer je een bestand sleept</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- v1.1 -->
-      <div class="release">
-        <div class="release-meta">
-          <div class="release-version">v1.1</div>
-          <div class="release-date">26 mei 2026</div>
-          <span class="release-badge badge-beta">Beta</span>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">Multi-bestand & verbeterde stabiliteit</div>
-          <div class="change-group">
-            <div class="change-group-label label-new">Nieuw</div>
-            <ul class="change-list">
-              <li><strong>Meerdere bestanden tegelijk</strong> uploaden via drag & drop</li>
-              <li>Algemeen commentaar per slate nu ook invoerbaar</li>
-            </ul>
-          </div>
-          <div class="change-group">
-            <div class="change-group-label label-improve">Verbeteringen</div>
-            <ul class="change-list">
-              <li>Drag & drop verbeterd en stabieler</li>
-              <li>Update-check robuuster (timeout 10s, betere foutafhandeling)</li>
-            </ul>
-          </div>
-          <div class="change-group">
-            <div class="change-group-label label-fix">Bugfixes</div>
-            <ul class="change-list">
-              <li>Laatste take ontving geen algemene opmerking (page_note) — opgelost</li>
-              <li>Sound Notes en Camera Notes naar dezelfde kolom worden nu samengevoegd met <strong>/</strong> i.p.v. overschreven</li>
-              <li>Tijdcode-noten in rapport verstoren de rating niet meer</li>
-              <li>Foutmelding bij geen internet is vriendelijker en verstoort opstarten niet meer</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- v1.0 -->
-      <div class="release">
-        <div class="release-meta">
-          <div class="release-version">v1.0</div>
-          <div class="release-date">25 mei 2026</div>
-          <div class="release-dot"></div>
-        </div>
-        <div class="release-body">
-          <div class="release-title">Eerste release</div>
-          <p class="release-note">De eerste publieke versie van Continuity Bridge.</p>
-        </div>
-      </div>
-
-    </div>
+    <div class="timeline" id="timeline"></div>
   </div>
+
+  <script src="translations.js"></script>
+  <script src="changelog-data.js"></script>
+  <script>
+  // ── Changelog render ─────────────────────────────────────────────────────────
+  const CL_LABEL_CLASS = { new: 'label-new', improve: 'label-improve', fix: 'label-fix' };
+  const CL_LABEL_KEY   = { new: 'cl_new',     improve: 'cl_improve',    fix: 'cl_fix' };
+
+  function t(key, lang) {
+    const dict = (typeof TRANSLATIONS !== 'undefined' && TRANSLATIONS[lang]) ? TRANSLATIONS[lang] : {};
+    return dict[key] !== undefined ? dict[key] : key;
+  }
+
+  function renderChangelog(lang) {
+    const tl = document.getElementById('timeline');
+    if (!tl || typeof RELEASES === 'undefined') return;
+
+    tl.innerHTML = RELEASES.map(rel => {
+      const isLatest = !!rel.latest;
+      const hasBadge = isLatest || rel.version !== 'v1.0';
+      const badgeClass = isLatest ? 'badge-latest' : 'badge-beta';
+      const badgeText  = isLatest ? t('cl_badge_latest', lang) : t('cl_badge_beta', lang);
+
+      const meta = `
+        <div class="release-meta">
+          <div class="release-version">${rel.version}</div>
+          <div class="release-date">${rel.date[lang] || rel.date.nl}</div>
+          ${hasBadge ? `<span class="release-badge ${badgeClass}">${badgeText}</span>` : ''}
+          <div class="release-dot"></div>
+        </div>`;
+
+      const groups = (rel.groups || []).map(g => `
+          <div class="change-group">
+            <div class="change-group-label ${CL_LABEL_CLASS[g.kind]}">${t(CL_LABEL_KEY[g.kind], lang)}</div>
+            <ul class="change-list">
+              ${g.items.map(it => `<li>${it[lang] || it.nl}</li>`).join('')}
+            </ul>
+          </div>`).join('');
+
+      const note = rel.note ? `<p class="release-note">${rel.note[lang] || rel.note.nl}</p>` : '';
+
+      return `
+      <div class="release${isLatest ? ' latest' : ''}">
+        ${meta}
+        <div class="release-body">
+          <div class="release-title">${rel.title[lang] || rel.title.nl}</div>
+          ${groups}${note}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Language dropdown ────────────────────────────────────────────────────────
+  const FLAGS = { nl: '🇳🇱', en: '🇬🇧', de: '🇩🇪' };
+
+  function syncLangUI(lang) {
+    document.getElementById('langFlag').textContent = FLAGS[lang] || '🇳🇱';
+    document.querySelectorAll('.lang-option').forEach(o => {
+      o.classList.toggle('active', o.dataset.lang === lang);
+    });
+  }
+
+  function toggleLangMenu() {
+    document.getElementById('langDropdown').classList.toggle('open');
+  }
+
+  function selectLang(lang) {
+    applyLang(lang);          // static keys via translations.js
+    renderChangelog(lang);    // dynamische timeline
+    syncLangUI(lang);
+    document.getElementById('langDropdown').classList.remove('open');
+  }
+
+  document.addEventListener('click', e => {
+    if (!document.getElementById('langDropdown').contains(e.target))
+      document.getElementById('langDropdown').classList.remove('open');
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const lang = getLang();
+    renderChangelog(lang);
+    syncLangUI(lang);
+  });
+  </script>
 
 </body>
 </html>
