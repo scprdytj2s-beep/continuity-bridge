@@ -42,6 +42,11 @@ const RELEASES = [
             en: 'More reliable in-app update — "Update & Restart" now safely replaces the app after closing instead of while running',
             de: 'Zuverlässigeres In-App-Update — "Aktualisieren & Neustarten" ersetzt die App jetzt sicher nach dem Beenden statt während des Betriebs',
           },
+          {
+            nl: 'Grotere lettergrootte in het hoofdvenster voor betere leesbaarheid',
+            en: 'Larger font size in the main window for better readability',
+            de: 'Größere Schriftgröße im Hauptfenster für bessere Lesbarkeit',
+          },
         ],
       },
     ],
