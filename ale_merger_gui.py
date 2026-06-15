@@ -2781,29 +2781,34 @@ class App:
                             raise RuntimeError("Geen .app in DMG")
                         new_app = apps[0]
 
-                        # Installeer — vervang huidige .app
+                        # Bepaal het pad van de huidige (draaiende) .app
                         if getattr(_sys3, 'frozen', False):
                             install_path = str(Path(_sys3.executable).parents[2])
                         else:
                             install_path = f"/Applications/{os.path.basename(new_app)}"
 
-                        if os.path.exists(install_path):
-                            shutil.rmtree(install_path)
-                        shutil.copytree(new_app, install_path)
+                        # Kopieer de nieuwe app NAAR een temp-map (niet over de
+                        # draaiende app heen). Het vervangen gebeurt straks via een
+                        # helper-script dat wacht tot de app gesloten is.
+                        stage_dir = tempfile.mkdtemp(prefix="cb_update_")
+                        staged_app = os.path.join(stage_dir, os.path.basename(new_app))
+                        shutil.copytree(new_app, staged_app)
                         _sp3.run(['hdiutil', 'detach', '-quiet', mount_pt],
                                  capture_output=True)
                         os.unlink(tmp_path)
-                        dlg.after(0, lambda ip=install_path: _finish_mac(ip))
+                        dlg.after(0, lambda ip=install_path, sa=staged_app, sd=stage_dir:
+                                  _finish_mac(ip, sa, sd))
 
                 except Exception as exc:
                     dlg.after(0, lambda e=str(exc): _on_error(e))
 
-            def _finish_mac(install_path):
+            def _finish_mac(install_path, staged_app, stage_dir):
                 prog.config(value=100)
                 status_lbl.config(fg=SUCCESS, text=t("update_status_done"))
                 upd_cv.pack_forget()
                 later_cv.pack_forget()
-                rst = _rounded_btn(btn_frame, t("update_btn_restart"), lambda: _do_restart(install_path),
+                rst = _rounded_btn(btn_frame, t("update_btn_restart"),
+                                   lambda: _do_restart(install_path, staged_app, stage_dir),
                                    bg=AVID_B, hv=AVID_B_H, fg="white",
                                    font=("Helvetica Neue", 11, "bold"),
                                    px=20, py=7, r=10, pbg=BG)
@@ -2819,9 +2824,30 @@ class App:
                 status_lbl.config(fg=SUCCESS, text=t("update_win_status_done"))
                 later_cv.config(state="normal")
 
-            def _do_restart(install_path):
-                import subprocess as _sp4, sys as _sys4
-                _sp4.Popen(['open', '-n', '-a', install_path])
+            def _do_restart(install_path, staged_app, stage_dir):
+                # Helper-script wacht tot deze app dicht is, vervangt dan de oude
+                # .app door de nieuwe, verwijdert quarantine en herstart.
+                import subprocess as _sp4, sys as _sys4, os as _os4, shlex as _shlex4
+                _q = _shlex4.quote
+                pid = _os4.getpid()
+                script = _os4.path.join(stage_dir, "cb_update.sh")
+                sh = f'''#!/bin/bash
+APP={_q(install_path)}
+NEW={_q(staged_app)}
+STAGE={_q(stage_dir)}
+# wacht tot de huidige app gesloten is
+while kill -0 {pid} 2>/dev/null; do sleep 0.3; done
+sleep 0.4
+rm -rf "$APP"
+/usr/bin/ditto "$NEW" "$APP"
+xattr -dr com.apple.quarantine "$APP" 2>/dev/null
+open "$APP"
+rm -rf "$STAGE"
+'''
+                with open(script, "w") as _f:
+                    _f.write(sh)
+                _os4.chmod(script, 0o755)
+                _sp4.Popen(['/bin/bash', script], start_new_session=True)
                 _sys4.exit(0)
 
             def _on_error(err):
