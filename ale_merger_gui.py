@@ -823,8 +823,10 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                 if dm: description = dm.group(1).strip()
                 tm = re.search(r"Take\s+Clip\s+Circle\s+Length\s+Take comment\s*\n(.*?)Shot Description:", text, re.DOTALL)
                 if not tm: continue
-                # Optionele timecode vóór cirkel (pdfplumber-extractie artefact)
-                for m in re.finditer(r"^(\d+[A-Z]*|[A-Z]+)\s+(A\d{3}C\d{3})\s+(?:\d{1,2}(?::\d{2})+\s+)?([✓\-X])\s*(.*)", tm.group(1), re.MULTILINE):
+                # Horizontale witruimte ([ \t]) i.p.v. \s: anders eet een cirkel die
+                # als laatste op de regel staat de newline op en slokt de vólgende
+                # take-regel (incl. diens rating) op.
+                for m in re.finditer(r"^(\d+[A-Z]*|[A-Z]+)[ \t]+(A\d{3}C\d{3})[ \t]+(?:\d{1,2}(?::\d{2})+[ \t]+)?([✓\-X])[ \t]*(.*)", tm.group(1), re.MULTILINE):
                     clip   = m.group(2)
                     ch     = m.group(3)
                     rest   = m.group(4).strip()
@@ -1366,7 +1368,7 @@ _patch_nsmenuitem_for_macos15plus()
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.3.9 (Beta)"
+VERSION       = "1.3.9.1 (Beta)"
 
 # ── Vertalingen ────────────────────────────────────────────────────────────────
 STRINGS: dict[str, dict[str, str]] = {
@@ -2840,8 +2842,19 @@ class App:
                 later_cv.unbind("<Button-1>")
                 threading.Thread(target=_download_and_install, daemon=True).start()
 
+            def _ulog(msg):
+                try:
+                    import os as _o, time as _tm
+                    p = _o.path.expanduser("~/Library/Logs/ContinuityBridge-update.log")
+                    _o.makedirs(_o.path.dirname(p), exist_ok=True)
+                    with open(p, "a") as _f:
+                        _f.write(f"{_tm.strftime('%Y-%m-%d %H:%M:%S')}  {msg}\n")
+                except Exception:
+                    pass
+
             def _download_and_install():
                 import urllib.request as _ur2, tempfile, os, sys as _sys3, ssl as _ssl2
+                _ulog(f"download start: {dl_url}")
                 try:
                     try:
                         import certifi as _certifi2
@@ -2869,6 +2882,7 @@ class App:
                                 status_lbl.config(text=t("update_status_download", kb=d//1024)))
                     tmp.close()
                     tmp_path = tmp.name
+                    _ulog(f"download klaar: {done} bytes -> {tmp_path}")
 
                     dlg.after(0, lambda: status_lbl.config(text=t("update_status_install")))
 
@@ -2890,6 +2904,7 @@ class App:
                                 mount_pt = parts[-1].strip()
                         if not mount_pt:
                             raise RuntimeError("DMG mounten mislukt")
+                        _ulog(f"DMG gemount op {mount_pt}")
                         apps = glob.glob(os.path.join(mount_pt, '*.app'))
                         if not apps:
                             raise RuntimeError("Geen .app in DMG")
@@ -2910,10 +2925,12 @@ class App:
                         _sp3.run(['hdiutil', 'detach', '-quiet', mount_pt],
                                  capture_output=True)
                         os.unlink(tmp_path)
+                        _ulog(f"gestaged naar {staged_app}; doelpad {install_path}")
                         dlg.after(0, lambda ip=install_path, sa=staged_app, sd=stage_dir:
                                   _finish_mac(ip, sa, sd))
 
                 except Exception as exc:
+                    _ulog(f"FOUT tijdens download/install: {exc!r}")
                     dlg.after(0, lambda e=str(exc): _on_error(e))
 
             def _finish_mac(install_path, staged_app, stage_dir):
@@ -2945,17 +2962,24 @@ class App:
                 _q = _shlex4.quote
                 pid = _os4.getpid()
                 script = _os4.path.join(stage_dir, "cb_update.sh")
+                _logf = _os4.path.expanduser("~/Library/Logs/ContinuityBridge-update.log")
                 sh = f'''#!/bin/bash
 APP={_q(install_path)}
 NEW={_q(staged_app)}
 STAGE={_q(stage_dir)}
+LOG={_q(_logf)}
+mkdir -p "$(dirname "$LOG")"
+echo "=== $(date) update-helper gestart (pid {pid}) ===" >> "$LOG"
+echo "APP=$APP" >> "$LOG"; echo "NEW=$NEW" >> "$LOG"
 # wacht tot de huidige app gesloten is
 while kill -0 {pid} 2>/dev/null; do sleep 0.3; done
 sleep 0.4
-rm -rf "$APP"
-/usr/bin/ditto "$NEW" "$APP"
+rm -rf "$APP" 2>>"$LOG"
+/usr/bin/ditto "$NEW" "$APP" 2>>"$LOG"
+echo "ditto exit=$?" >> "$LOG"
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null
-open "$APP"
+open "$APP" 2>>"$LOG"
+echo "open exit=$? — klaar" >> "$LOG"
 rm -rf "$STAGE"
 '''
                 with open(script, "w") as _f:
