@@ -5,9 +5,83 @@
 
 const RELEASES = [
   {
+    version: 'v1.3.9.1',
+    date: { nl: '6 juli 2026', en: '6 July 2026', de: '6. Juli 2026' },
+    latest: true,
+    title: {
+      nl: 'Take-herkenning LockitNetwork',
+      en: 'Take recognition LockitNetwork',
+      de: 'Take-Erkennung LockitNetwork',
+    },
+    groups: [
+      {
+        kind: 'fix',
+        items: [
+          {
+            nl: 'Opgelost: in <strong>LockitNetwork</strong>-rapporten kon een take-regel de volgende take "opslokken", waardoor die take (inclusief rating) niet doorkwam. Alle takes worden nu correct herkend.',
+            en: 'Fixed: in <strong>LockitNetwork</strong> reports a take line could "swallow" the next take, causing that take (including its rating) to be dropped. All takes are now recognized correctly.',
+            de: 'Behoben: in <strong>LockitNetwork</strong>-Berichten konnte eine Take-Zeile den nächsten Take "verschlucken", sodass dieser Take (samt Bewertung) nicht übernommen wurde. Alle Takes werden jetzt korrekt erkannt.',
+          },
+          {
+            nl: 'Tijdcodes in take-opmerkingen worden genegeerd; de eventuele tekst erna komt gewoon door.',
+            en: 'Timecodes in take notes are ignored; any text after them still comes through.',
+            de: 'Timecodes in Take-Notizen werden ignoriert; ein eventueller Text danach wird trotzdem übernommen.',
+          },
+        ],
+      },
+    ],
+  },
+
+  {
+    version: 'v1.3.9',
+    date: { nl: '6 juli 2026', en: '6 July 2026', de: '6. Juli 2026' },
+    title: {
+      nl: 'Uiterlijk-instellingen & Scene-kolom',
+      en: 'Appearance settings & Scene column',
+      de: 'Darstellungs-Einstellungen & Szenen-Spalte',
+    },
+    groups: [
+      {
+        kind: 'new',
+        items: [
+          {
+            nl: '<strong>Scene-doelkolom instelbaar</strong> (Uit / Auto / eigen kolom) — behoud je originele Scene-data',
+            en: '<strong>Configurable scene target column</strong> (Off / Auto / own column) — keep your original Scene data',
+            de: '<strong>Einstellbare Szenen-Zielspalte</strong> (Aus / Auto / eigene Spalte) — behalte deine originalen Szenendaten',
+          },
+          {
+            nl: '<strong>Nieuwe "Uiterlijk"-instellingen</strong> — interfacegrootte-schuif (10–200%), lettertypekeuze en accentkleur, passen direct toe',
+            en: '<strong>New "Appearance" settings</strong> — interface size slider (10–200%), font choice and accent color, applied instantly',
+            de: '<strong>Neue "Darstellung"-Einstellungen</strong> — Schieberegler für die Oberflächengröße (10–200%), Schriftwahl und Akzentfarbe, sofort angewendet',
+          },
+          {
+            nl: '<strong>Optie map niet openen</strong> na verwerken; optionele umlaut-omzetting (ü→ue, ö→oe, ä→ae, ß→ss)',
+            en: '<strong>Option to not open the folder</strong> after processing; optional umlaut conversion (ü→ue, ö→oe, ä→ae, ß→ss)',
+            de: '<strong>Option, den Ordner nicht zu öffnen</strong> nach der Verarbeitung; optionale Umlaut-Umwandlung (ü→ue, ö→oe, ä→ae, ß→ss)',
+          },
+        ],
+      },
+      {
+        kind: 'improve',
+        items: [
+          {
+            nl: 'Duitse tekens/umlauten blijven correct bij import — ALE wordt in dezelfde codering teruggeschreven als de export',
+            en: 'German characters/umlauts stay correct on import — the ALE is written back in the same encoding as the export',
+            de: 'Deutsche Zeichen/Umlaute bleiben beim Import korrekt — die ALE wird in derselben Codierung zurückgeschrieben wie beim Export',
+          },
+          {
+            nl: 'Overzichtelijkere Voorkeuren — in/uitklapbare secties met scrollbalk, apart "Uitvoer"-hoofdstuk',
+            en: 'Clearer Preferences — collapsible sections with a scrollbar, a separate "Output" chapter',
+            de: 'Übersichtlichere Einstellungen — ein-/ausklappbare Abschnitte mit Scrollbalken, ein separates Kapitel "Ausgabe"',
+          },
+        ],
+      },
+    ],
+  },
+
+  {
     version: 'v1.3.8',
     date: { nl: '12 juni 2026', en: '12 June 2026', de: '12. Juni 2026' },
-    latest: true,
     title: {
       nl: 'Scene-kolom & Duitse tekens',
       en: 'Scene column & German characters',

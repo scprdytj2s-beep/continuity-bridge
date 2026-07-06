@@ -1,4 +1,4 @@
 # Continuity Bridge
 Merges Haantjes continuity reports (PDF) into Avid ALE bin files.
 
-**Current version: 1.3.8**
+**Current version: 1.3.9.1**
