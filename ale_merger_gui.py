@@ -891,7 +891,15 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
     else:
         le = "\n"
 
-    lines = raw.decode("utf-8", errors="replace").splitlines()
+    # Encoding detecteren en onthouden voor de output (round-trip). Moderne Avid
+    # exporteert UTF-8; oudere Avid (zonder UTF-8-optie) exporteert Mac Roman.
+    try:
+        text = raw.decode("utf-8")
+        src_encoding = "utf-8"
+    except UnicodeDecodeError:
+        text = raw.decode("mac_roman", errors="replace")
+        src_encoding = "mac_roman"
+    lines = text.splitlines()
 
     col_idx = data_idx = None
     for i, line in enumerate(lines):
@@ -1243,7 +1251,7 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
     result = le.join(out_lines)
     if raw.endswith(le.encode()):
         result += le
-    return result
+    return result, src_encoding
 
 
 # ---------------------------------------------------------------------------
@@ -1358,7 +1366,7 @@ _patch_nsmenuitem_for_macos15plus()
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.3.8 (Beta)"
+VERSION       = "1.3.9 (Beta)"
 
 # ── Vertalingen ────────────────────────────────────────────────────────────────
 STRINGS: dict[str, dict[str, str]] = {
@@ -1440,6 +1448,18 @@ STRINGS: dict[str, dict[str, str]] = {
         "ask_clear_msg":           "Velden wissen voor de volgende draaidag?",
         "btn_clear_yes":           "Wis",
         "btn_clear_no":            "Laat staan",
+        "prefs_open_folder":       "Map openen na verwerken",
+        "prefs_translit":          "Umlauten omzetten (ü→ue, ö→oe, ä→ae, ß→ss)",
+        "prefs_ui_scale":          "Interfacegrootte",
+        "prefs_ui_font":           "Lettertype",
+        "prefs_accent":            "Accentkleur",
+        "font_helvetica":          "Standaard",
+        "font_systeem":            "Systeem",
+        "font_leesbaar":           "Leesbaar",
+        "prefs_section_appearance": "UITERLIJK",
+        "prefs_section_output":    "UITVOER",
+        "prefs_section_language":  "TAAL",
+        "prefs_reset_scale":       "Standaard (100%)",
         "prefs_clear_label":       "Wissen na verwerken",
         "prefs_clear_delay":       "Vertraging",
         "clear_mode_uit":          "Uit",
@@ -1658,6 +1678,18 @@ STRINGS: dict[str, dict[str, str]] = {
         "ask_clear_msg":           "Clear the fields for the next shooting day?",
         "btn_clear_yes":           "Clear",
         "btn_clear_no":            "Keep",
+        "prefs_open_folder":       "Open folder after processing",
+        "prefs_translit":          "Convert umlauts (ü→ue, ö→oe, ä→ae, ß→ss)",
+        "prefs_ui_scale":          "Interface size",
+        "prefs_ui_font":           "Font",
+        "prefs_accent":            "Accent colour",
+        "font_helvetica":          "Default",
+        "font_systeem":            "System",
+        "font_leesbaar":           "Readable",
+        "prefs_section_appearance": "APPEARANCE",
+        "prefs_section_output":    "OUTPUT",
+        "prefs_section_language":  "LANGUAGE",
+        "prefs_reset_scale":       "Reset (100%)",
         "prefs_clear_label":       "Clear after processing",
         "prefs_clear_delay":       "Delay",
         "clear_mode_uit":          "Off",
@@ -1876,6 +1908,18 @@ STRINGS: dict[str, dict[str, str]] = {
         "ask_clear_msg":           "Felder für den nächsten Drehtag leeren?",
         "btn_clear_yes":           "Leeren",
         "btn_clear_no":            "Behalten",
+        "prefs_open_folder":       "Ordner nach Verarbeitung öffnen",
+        "prefs_translit":          "Umlaute umwandeln (ü→ue, ö→oe, ä→ae, ß→ss)",
+        "prefs_ui_scale":          "Oberflächengröße",
+        "prefs_ui_font":           "Schriftart",
+        "prefs_accent":            "Akzentfarbe",
+        "font_helvetica":          "Standard",
+        "font_systeem":            "System",
+        "font_leesbaar":           "Lesbar",
+        "prefs_section_appearance": "DARSTELLUNG",
+        "prefs_section_output":    "AUSGABE",
+        "prefs_section_language":  "SPRACHE",
+        "prefs_reset_scale":       "Zurücksetzen (100%)",
         "prefs_clear_label":       "Nach Verarbeitung leeren",
         "prefs_clear_delay":       "Verzögerung",
         "clear_mode_uit":          "Aus",
@@ -2195,11 +2239,45 @@ SURFACE2 = "#161130"   # hover / actief
 BORDER   = "#2E2060"   # subtiele paarse rand
 TEXT     = "#F0ECFF"   # helder bijna-wit
 MUTED    = "#9C8FD0"   # gedempte subtekst (lichter voor leesbaarheid)
-AVID_B   = "#8B30F5"   # elektrisch paars (knop, header)
+AVID_B   = "#8B30F5"   # elektrisch paars (knop, header) — accentkleur, instelbaar
 AVID_B_H = "#7A26E0"   # hover — iets donkerder
 ACCENT2  = "#B98CFF"   # lichter paars accent (FAQ-plus, kolomlabels)
 SUCCESS  = "#4ED98A"
 ERROR    = "#FF5577"
+
+# Lettertypes — instelbaar via Voorkeuren (worden bij opstart uit prefs gezet)
+UI_FONT   = "Helvetica Neue"   # hoofd-UI-lettertype
+MONO_FONT = "Menlo"            # monospace (logvenster)
+
+# Lettertype-keuzes → family. "Leesbaar" gebruikt een breed beschikbaar leesbaar font.
+UI_FONT_CHOICES = {
+    "helvetica": "Helvetica Neue",
+    "systeem":   ".AppleSystemUIFont",
+    "leesbaar":  "Verdana",
+}
+
+def _apply_font(code):
+    """Zet het globale UI-lettertype op basis van keuze."""
+    global UI_FONT
+    fam = UI_FONT_CHOICES.get(code)
+    if fam:
+        UI_FONT = fam
+
+# Accentkleur-thema's: (basis, hover, licht-accent)
+ACCENT_THEMES = {
+    "paars":  ("#8B30F5", "#7A26E0", "#B98CFF"),
+    "blauw":  ("#2F6FED", "#255CC8", "#8FB4FF"),
+    "groen":  ("#16A46B", "#128456", "#7FE3B5"),
+    "roze":   ("#E5439B", "#C4327F", "#FF9CD1"),
+    "oranje": ("#E8722A", "#C85E20", "#FFB483"),
+}
+
+def _apply_accent(code):
+    """Zet de globale accentkleuren op basis van themakeuze."""
+    global AVID_B, AVID_B_H, ACCENT2
+    trio = ACCENT_THEMES.get(code)
+    if trio:
+        AVID_B, AVID_B_H, ACCENT2 = trio
 
 
 def _rrect(cv, w, h, r, color, fg, text, font):
@@ -2405,6 +2483,11 @@ _PREFS_DEFAULTS = {
     "language":           "en",
     "clear_mode":         "vragen",   # "uit" | "vragen" | "automatisch"
     "clear_delay":        5,          # seconden, in stappen van 5
+    "open_folder_after":  True,       # map met resultaat openen na verwerken
+    "translit_umlauts":   False,      # ü→ue, ö→oe, ä→ae, ß→ss bij export
+    "ui_scale":           100,        # interfacegrootte in % (90–150)
+    "ui_font":            "helvetica", # helvetica | systeem | leesbaar
+    "accent":            "paars",     # paars | blauw | groen | roze | oranje
 }
 _INVALID_COL_VALUES = {"Kies kolom…", "Choose column…", "Spalte wählen…",
                        "Eigen naam…", "Kies kolom...", ""}
@@ -2530,6 +2613,22 @@ class App:
 
         # ── Voorkeuren laden ─────────────────────────────────────────────────
         _p = _load_prefs()
+
+        # Uiterlijk toepassen vóór de widgets gebouwd worden: lettertype + accentkleur.
+        _apply_font(_p.get("ui_font", "helvetica"))
+        _apply_accent(_p.get("accent", "paars"))
+        self._prev_accent = _p.get("accent", "paars")
+
+        # UI-schaal: we schalen fonts DIRECT (per widget), niet via tk scaling —
+        # dat werkt betrouwbaar op macOS én neemt de dropdowns/comboboxen mee.
+        self._font_base = {}   # widget-pad → (basisgrootte, weight, slant)
+        self._ui_scale_pct = int(_p.get("ui_scale", 100) or 100)
+        self._ui_scale_pct = max(10, min(200, self._ui_scale_pct))
+        self._scale = self._ui_scale_pct / 100.0
+        _factor = self._scale
+        self._win_w = int(520 * _factor)
+        self._win_h = int(650 * _factor)
+
         self.write_rating     = tk.BooleanVar(value=_p["write_rating"])
         self.star_format      = tk.StringVar(value=_p.get("star_format", "sterren"))
         self.write_notes      = tk.BooleanVar(value=_p.get("write_notes", True))
@@ -2556,6 +2655,11 @@ class App:
         self.language           = tk.StringVar(value=_p.get("language", "en"))
         self.clear_mode         = tk.StringVar(value=_p.get("clear_mode", "vragen"))
         self.clear_delay        = tk.IntVar(value=_p.get("clear_delay", 5))
+        self.open_folder_after  = tk.BooleanVar(value=_p.get("open_folder_after", True))
+        self.translit_umlauts   = tk.BooleanVar(value=_p.get("translit_umlauts", False))
+        self.ui_scale           = tk.IntVar(value=self._ui_scale_pct)
+        self.ui_font            = tk.StringVar(value=_p.get("ui_font", "helvetica"))
+        self.accent             = tk.StringVar(value=_p.get("accent", "paars"))
         self._prefs_cache = _p   # bewaar voor recents
 
         def _save_all():
@@ -2588,6 +2692,11 @@ class App:
                 "language":           self.language.get(),
                 "clear_mode":         self.clear_mode.get(),
                 "clear_delay":        self.clear_delay.get(),
+                "open_folder_after":  self.open_folder_after.get(),
+                "translit_umlauts":   self.translit_umlauts.get(),
+                "ui_scale":           self.ui_scale.get(),
+                "ui_font":            self.ui_font.get(),
+                "accent":             self.accent.get(),
             })
         self._save_prefs_all = _save_all
 
@@ -2621,8 +2730,13 @@ class App:
         self.scene_col         .trace_add("write", _on_pref_change)
         self.clear_mode.trace_add("write", _on_pref_change)
         self.clear_delay.trace_add("write", _on_pref_change)
+        self.open_folder_after.trace_add("write", _on_pref_change)
+        self.translit_umlauts.trace_add("write", _on_pref_change)
+        self.ui_scale.trace_add("write", _on_pref_change)
+        self.ui_font.trace_add("write", _on_pref_change)
+        self.accent.trace_add("write", _on_pref_change)
         self.root.title(t("wintitle_main"))
-        self.root.geometry("520x650")
+        self.root.geometry(f"{self._win_w}x{self._win_h}")
         self.root.resizable(False, True)
         self.root.minsize(520, 520)
         self.root.configure(bg=BG)
@@ -2698,9 +2812,9 @@ class App:
             dlg.grab_set()
 
             tk.Label(dlg, text=t("update_available", ver=latest_version),
-                     bg=BG, fg=TEXT, font=("Helvetica Neue", 14, "bold")).pack(pady=(24, 4))
+                     bg=BG, fg=TEXT, font=(UI_FONT, 14, "bold")).pack(pady=(24, 4))
             tk.Label(dlg, text=t("update_you_have", ver=VERSION),
-                     bg=BG, fg=MUTED, font=("Helvetica Neue", 11)).pack()
+                     bg=BG, fg=MUTED, font=(UI_FONT, 11)).pack()
 
             prog_frame = tk.Frame(dlg, bg=BG)
             prog_frame.pack(fill="x", padx=36, pady=(18, 4))
@@ -2708,7 +2822,7 @@ class App:
             prog.pack()
 
             status_lbl = tk.Label(dlg, text="", bg=BG, fg=MUTED,
-                                  font=("Helvetica Neue", 10))
+                                  font=(UI_FONT, 10))
             status_lbl.pack(pady=(0, 12))
 
             btn_frame = tk.Frame(dlg, bg=BG)
@@ -2810,12 +2924,12 @@ class App:
                 rst = _rounded_btn(btn_frame, t("update_btn_restart"),
                                    lambda: _do_restart(install_path, staged_app, stage_dir),
                                    bg=AVID_B, hv=AVID_B_H, fg="white",
-                                   font=("Helvetica Neue", 11, "bold"),
+                                   font=(UI_FONT, 11, "bold"),
                                    px=20, py=7, r=10, pbg=BG)
                 rst.pack(side="left", padx=(0, 10))
                 lat = _rounded_btn(btn_frame, t("update_btn_later"), dlg.destroy,
                                    bg=SURFACE2, hv=BORDER2, fg=MUTED,
-                                   font=("Helvetica Neue", 11),
+                                   font=(UI_FONT, 11),
                                    px=16, py=7, r=10, pbg=BG)
                 lat.pack(side="left")
 
@@ -2859,12 +2973,12 @@ rm -rf "$STAGE"
 
             upd_cv = _rounded_btn(btn_frame, t("update_btn_install"), _start,
                                    bg=AVID_B, hv=AVID_B_H, fg="white",
-                                   font=("Helvetica Neue", 11, "bold"),
+                                   font=(UI_FONT, 11, "bold"),
                                    px=20, py=7, r=10, pbg=BG)
             upd_cv.pack(side="left", padx=(0, 10))
             later_cv = _rounded_btn(btn_frame, t("update_btn_later"), dlg.destroy,
                                     bg=SURFACE2, hv=BORDER2, fg=MUTED,
-                                    font=("Helvetica Neue", 11),
+                                    font=(UI_FONT, 11),
                                     px=16, py=7, r=10, pbg=BG)
             later_cv.pack(side="left")
 
@@ -2905,10 +3019,10 @@ rm -rf "$STAGE"
             import os as _os2
             fname = _os2.path.basename(pdf_path)
             tk.Label(dlg, text=t("layout_unknown_format"),
-                     bg=BG, fg=TEXT, font=("Helvetica Neue", 14, "bold")).pack(
+                     bg=BG, fg=TEXT, font=(UI_FONT, 14, "bold")).pack(
                 anchor="w", padx=24, pady=(20, 2))
             tk.Label(dlg, text=t("layout_hint", fname=fname),
-                     bg=BG, fg=MUTED, font=("Helvetica Neue", 11)).pack(
+                     bg=BG, fg=MUTED, font=(UI_FONT, 11)).pack(
                 anchor="w", padx=24, pady=(0, 14))
 
             # Tabel preview
@@ -2925,7 +3039,7 @@ rm -rf "$STAGE"
                 col_f.grid(row=0, column=ci2, padx=6, pady=8, sticky="nw")
                 tk.Label(col_f, text=hdr or f"(kolom {ci2+1})",
                          bg=SURFACE2, fg=ACCENT2,
-                         font=("Helvetica Neue", 10, "bold")).pack(anchor="w")
+                         font=(UI_FONT, 10, "bold")).pack(anchor="w")
                 var = tk.StringVar(value=t("field_ignore"))
                 # Slim voorstel op basis van kolomnaam
                 h_low = hdr.lower()
@@ -2942,7 +3056,7 @@ rm -rf "$STAGE"
                 col_vars.append(var)
                 om = tk.OptionMenu(col_f, var, *FIELD_OPTIONS)
                 om.config(bg=SURFACE2, fg=TEXT, activebackground=BORDER2,
-                          font=("Helvetica Neue", 9), width=12)
+                          font=(UI_FONT, 9), width=12)
                 om["menu"].config(bg=SURFACE2, fg=TEXT)
                 om.pack(anchor="w", pady=2)
                 # Preview eerste paar waarden
@@ -2950,21 +3064,21 @@ rm -rf "$STAGE"
                     val = row2[ci2] if ci2 < len(row2) else ""
                     tk.Label(col_f, text=val[:18] or "–",
                              bg=SURFACE2, fg=MUTED,
-                             font=("Helvetica Neue", 9)).pack(anchor="w")
+                             font=(UI_FONT, 9)).pack(anchor="w")
 
             # Naam voor deze layout
             name_row = tk.Frame(dlg, bg=BG)
             name_row.pack(fill="x", padx=24, pady=(0, 12))
             tk.Label(name_row, text=t("layout_name_label"),
-                     bg=BG, fg=MUTED, font=("Helvetica Neue", 11)).pack(
+                     bg=BG, fg=MUTED, font=(UI_FONT, 11)).pack(
                 side="left", padx=(0, 10))
             name_var = tk.StringVar(value=fname.split(".")[0])
             tk.Entry(name_row, textvariable=name_var, bg=SURFACE2, fg=TEXT,
                      insertbackground=TEXT, relief="flat",
-                     font=("Helvetica Neue", 11), width=28).pack(side="left")
+                     font=(UI_FONT, 11), width=28).pack(side="left")
 
             status_lbl = tk.Label(dlg, text="", bg=BG, fg=MUTED,
-                                  font=("Helvetica Neue", 10))
+                                  font=(UI_FONT, 10))
             status_lbl.pack(pady=(0, 6))
 
             btn_row = tk.Frame(dlg, bg=BG)
@@ -3002,11 +3116,11 @@ rm -rf "$STAGE"
 
             _rounded_btn(btn_row, t("btn_detect_process"), _confirm,
                          bg=AVID_B, hv=AVID_B_H, fg="white",
-                         font=("Helvetica Neue", 11, "bold"),
+                         font=(UI_FONT, 11, "bold"),
                          px=20, py=7, r=10, pbg=BG).pack(side="left", padx=(0, 10))
             _rounded_btn(btn_row, t("btn_skip"), _skip,
                          bg=SURFACE2, hv=BORDER2, fg=MUTED,
-                         font=("Helvetica Neue", 11),
+                         font=(UI_FONT, 11),
                          px=16, py=7, r=10, pbg=BG).pack(side="left")
 
         # ── FAQ-venster ──────────────────────────────────────────────────────
@@ -3065,10 +3179,10 @@ rm -rf "$STAGE"
 
             # ── Header ────────────────────────────────────────────────────────
             tk.Label(inner, text=t("faq_title"), bg=BG, fg=TEXT,
-                     font=("Helvetica Neue", 16, "bold"),
+                     font=(UI_FONT, 16, "bold"),
                      anchor="w").pack(anchor="w", padx=22, pady=(20, 2))
             tk.Label(inner, text=t("faq_subtitle"),
-                     bg=BG, fg=MUTED, font=("Helvetica Neue", 10),
+                     bg=BG, fg=MUTED, font=(UI_FONT, 10),
                      anchor="w").pack(anchor="w", padx=22, pady=(0, 14))
 
             # ── Accordion items ───────────────────────────────────────────────
@@ -3094,17 +3208,17 @@ rm -rf "$STAGE"
                 bar = tk.Frame(row, bg=SURFACE2, width=3)
                 bar.pack(side="left", fill="y")
                 qlbl = tk.Label(row, text=q, bg=SURFACE2, fg=TEXT,
-                                font=("Helvetica Neue", 12, "bold"),
+                                font=(UI_FONT, 12, "bold"),
                                 wraplength=400, justify="left", anchor="w")
                 qlbl.pack(side="left", padx=(13, 10), pady=14, fill="x", expand=True)
                 chlbl = tk.Label(row, textvariable=chev, bg=SURFACE2, fg=ACCENT2,
-                                 font=("Helvetica Neue", 13))
+                                 font=(UI_FONT, 13))
                 chlbl.pack(side="right", padx=16)
 
                 # Antwoord (verborgen)
                 ans = tk.Frame(card, bg=_ANS_BG)
                 tk.Label(ans, text=a, bg=_ANS_BG, fg=_ANS_FG,
-                         font=("Helvetica Neue", 12),
+                         font=(UI_FONT, 12),
                          wraplength=430, justify="left",
                          anchor="nw").pack(fill="x", padx=18, pady=(8, 16))
 
@@ -3171,21 +3285,21 @@ rm -rf "$STAGE"
             except Exception:
                 pass
             tk.Label(win, text="Continuity Bridge", bg=BG, fg=TEXT,
-                     font=("Helvetica Neue", 15, "bold")).pack()
+                     font=(UI_FONT, 15, "bold")).pack()
             tk.Label(win, text=t("about_version", ver=VERSION), bg=BG, fg=MUTED,
-                     font=("Helvetica Neue", 11)).pack(pady=(2, 0))
+                     font=(UI_FONT, 11)).pack(pady=(2, 0))
             tk.Label(win, text=t("about_author"), bg=BG, fg=MUTED,
-                     font=("Helvetica Neue", 11)).pack(pady=(2, 4))
+                     font=(UI_FONT, 11)).pack(pady=(2, 4))
             _mail = tk.Label(win, text="support@studiomichielboesveldt.nl",
                              bg=BG, fg=AVID_B,
-                             font=("Helvetica Neue", 10, "underline"),
+                             font=(UI_FONT, 10, "underline"),
                              cursor="pointinghand")
             _mail.pack(pady=(0, 14))
             _mail.bind("<Button-1>", lambda e: __import__('webbrowser').open(
                 "mailto:support@studiomichielboesveldt.nl"))
             _rounded_btn(win, t("btn_ok"), win.destroy,
                          bg=AVID_B, hv=AVID_B_H, fg="white",
-                         font=("Helvetica Neue", 12, "bold"),
+                         font=(UI_FONT, 12, "bold"),
                          px=28, py=6, r=10, pbg=BG).pack()
             win.bind("<Return>", lambda e: win.destroy())
             win.bind("<Escape>", lambda e: win.destroy())
@@ -3203,33 +3317,33 @@ rm -rf "$STAGE"
             dlg.focus_force()
 
             tk.Label(dlg, text="Continuity Bridge", bg=BG, fg=TEXT,
-                     font=("Helvetica Neue", 14, "bold")).pack(pady=(20, 4))
+                     font=(UI_FONT, 14, "bold")).pack(pady=(20, 4))
 
             if message:
                 tk.Label(dlg, text=message, bg=BG, fg=ERROR,
-                         font=("Helvetica Neue", 10)).pack(pady=(4, 0))
+                         font=(UI_FONT, 10)).pack(pady=(4, 0))
 
             tk.Label(dlg, text=t("lic_name_label"), bg=BG, fg=MUTED,
-                     font=("Helvetica Neue", 10)).pack(pady=(10, 3))
+                     font=(UI_FONT, 10)).pack(pady=(10, 3))
             name_var = tk.StringVar()
             name_entry = tk.Entry(dlg, textvariable=name_var, bg=SURFACE2, fg=TEXT,
                                   insertbackground=TEXT, relief="flat",
-                                  font=("Helvetica Neue", 12), width=26,
+                                  font=(UI_FONT, 12), width=26,
                                   justify="center")
             name_entry.pack(ipady=6)
             name_entry.focus_set()
 
             tk.Label(dlg, text=t("lic_serial_label"), bg=BG, fg=MUTED,
-                     font=("Helvetica Neue", 10)).pack(pady=(10, 3))
+                     font=(UI_FONT, 10)).pack(pady=(10, 3))
             serial_var = tk.StringVar()
             entry = tk.Entry(dlg, textvariable=serial_var, bg=SURFACE2, fg=TEXT,
                              insertbackground=TEXT, relief="flat",
-                             font=("Helvetica Neue", 11), width=26,
+                             font=(UI_FONT, 11), width=26,
                              justify="center")
             entry.pack(ipady=6)
 
             status_lbl = tk.Label(dlg, text="", bg=BG, fg=MUTED,
-                                  font=("Helvetica Neue", 10))
+                                  font=(UI_FONT, 10))
             status_lbl.pack(pady=(8, 0))
 
             def _activate():
@@ -3291,7 +3405,7 @@ rm -rf "$STAGE"
 
             _act_cv = _rounded_btn(dlg, t("lic_btn_activate"), _activate,
                                     bg=AVID_B, hv=AVID_B_H, fg="white",
-                                    font=("Helvetica Neue", 12, "bold"),
+                                    font=(UI_FONT, 12, "bold"),
                                     px=24, py=7, r=10, pbg=BG)
             _act_cv.pack(pady=(8, 0))
             name_entry.bind("<Return>", lambda e: entry.focus_set())
@@ -3302,14 +3416,14 @@ rm -rf "$STAGE"
                 _shop_cv  = _rounded_btn(dlg, t("lic_btn_buy"),
                                          lambda: __import__('webbrowser').open(_SHOP_URL),
                                          bg=SUCCESS, hv="#3ab870", fg="#0A2A10",
-                                         font=("Helvetica Neue", 11, "bold"),
+                                         font=(UI_FONT, 11, "bold"),
                                          px=18, py=6, r=10, pbg=BG)
                 _shop_cv.pack(pady=(12, 0))
                 tk.Label(dlg, text=t("lic_buy_after"),
-                         bg=BG, fg=MUTED, font=("Helvetica Neue", 9)).pack(pady=(6, 0))
+                         bg=BG, fg=MUTED, font=(UI_FONT, 9)).pack(pady=(6, 0))
                 mail_lbl = tk.Label(dlg, text="support@studiomichielboesveldt.nl",
                                     bg=BG, fg=AVID_B,
-                                    font=("Helvetica Neue", 9, "underline"),
+                                    font=(UI_FONT, 9, "underline"),
                                     cursor="pointinghand")
                 mail_lbl.pack(pady=(2, 0))
                 mail_lbl.bind("<Button-1>", lambda e: __import__('webbrowser').open(
@@ -3332,23 +3446,23 @@ rm -rf "$STAGE"
                         win.geometry("340x230")
                         win.grab_set(); win.lift(); win.focus_force()
                         tk.Label(win, text=t("lic_active_label"), bg=BG, fg=SUCCESS,
-                                 font=("Helvetica Neue", 13, "bold")).pack(pady=(20, 4))
+                                 font=(UI_FONT, 13, "bold")).pack(pady=(20, 4))
                         tk.Label(win, text=name, bg=BG, fg=TEXT,
-                                 font=("Helvetica Neue", 14, "bold")).pack()
+                                 font=(UI_FONT, 14, "bold")).pack()
                         tk.Label(win, text=msg, bg=BG, fg=MUTED,
-                                 font=("Helvetica Neue", 11)).pack(pady=(4, 10))
+                                 font=(UI_FONT, 11)).pack(pady=(4, 10))
                         tk.Label(win, text=serial, bg=BG, fg=MUTED,
-                                 font=("Menlo", 9), wraplength=300).pack(pady=(0, 8))
+                                 font=(MONO_FONT, 9), wraplength=300).pack(pady=(0, 8))
                         _sl = tk.Label(win, text="support@studiomichielboesveldt.nl",
                                        bg=BG, fg=AVID_B,
-                                       font=("Helvetica Neue", 9, "underline"),
+                                       font=(UI_FONT, 9, "underline"),
                                        cursor="pointinghand")
                         _sl.pack(pady=(0, 10))
                         _sl.bind("<Button-1>", lambda e: __import__('webbrowser').open(
                             "mailto:support@studiomichielboesveldt.nl"))
                         _rounded_btn(win, t("btn_ok"), win.destroy,
                                      bg=AVID_B, hv=AVID_B_H, fg="white",
-                                     font=("Helvetica Neue", 12, "bold"),
+                                     font=(UI_FONT, 12, "bold"),
                                      px=28, py=6, r=10, pbg=BG).pack()
                         win.bind("<Return>", lambda e: win.destroy())
                         win.bind("<Escape>", lambda e: win.destroy())
@@ -3444,22 +3558,22 @@ rm -rf "$STAGE"
             hdr = tk.Frame(win, bg=SURFACE, pady=8, padx=14)
             hdr.pack(fill="x")
             tk.Label(hdr, text=t("mgr_token_label"), bg=SURFACE, fg=MUTED,
-                     font=("Helvetica Neue", 11)).pack(side="left")
+                     font=(UI_FONT, 11)).pack(side="left")
             tok_var = tk.StringVar(value=_mgr_token_load())
             tok_entry = tk.Entry(hdr, textvariable=tok_var, show="•", width=44,
                                  bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
-                                 relief="flat", font=("Menlo", 10), bd=4)
+                                 relief="flat", font=(MONO_FONT, 10), bd=4)
             tok_entry.pack(side="left", padx=(8, 6))
             _mgr_token_save_btn = tk.Button(hdr, text=t("mgr_btn_save_load"),
                                             bg=AVID_B, fg="white",
-                                            font=("Helvetica Neue", 10, "bold"),
+                                            font=(UI_FONT, 10, "bold"),
                                             relief="flat", bd=0, cursor="hand2",
                                             padx=10, pady=4)
             hdr.pack(fill="x")
 
             # Status-label
             status_lbl = tk.Label(win, text="", bg=BG, fg=MUTED,
-                                   font=("Helvetica Neue", 10))
+                                   font=(UI_FONT, 10))
             status_lbl.pack(anchor="w", padx=14, pady=(6, 2))
 
             # Tabel-frame
@@ -3474,10 +3588,10 @@ rm -rf "$STAGE"
             style.configure("Lic.Treeview",
                 background=SURFACE, foreground=TEXT,
                 fieldbackground=SURFACE, rowheight=24,
-                font=("Helvetica Neue", 11))
+                font=(UI_FONT, 11))
             style.configure("Lic.Treeview.Heading",
                 background=SURFACE2, foreground=MUTED,
-                font=("Helvetica Neue", 10, "bold"))
+                font=(UI_FONT, 10, "bold"))
             style.map("Lic.Treeview", background=[("selected", AVID_B)])
 
             vsb = tk.Scrollbar(tbl_frame, orient="vertical", bg=SURFACE2)
@@ -3496,12 +3610,12 @@ rm -rf "$STAGE"
             btn_row.pack(fill="x", padx=14, pady=(0, 12))
             revoke_btn = tk.Button(btn_row, text=t("mgr_revoke_btn"),
                                    bg=ERROR, fg="white",
-                                   font=("Helvetica Neue", 11, "bold"),
+                                   font=(UI_FONT, 11, "bold"),
                                    relief="flat", bd=0, cursor="hand2",
                                    padx=12, pady=6, state="disabled")
             revoke_btn.pack(side="left")
             count_lbl = tk.Label(btn_row, text="", bg=BG, fg=MUTED,
-                                  font=("Helvetica Neue", 10))
+                                  font=(UI_FONT, 10))
             count_lbl.pack(side="right")
 
             _licenses_cache = []   # mutable closure list
@@ -3687,6 +3801,9 @@ rm -rf "$STAGE"
         self.root.after(5 * 60 * 1000, _periodic_revoke_check)
 
         self._ui()
+        # Opgeslagen interfacegrootte toepassen (fonts direct schalen)
+        if self._ui_scale_pct != 100:
+            self.root.after(0, self._apply_appearance_live)
         if HAS_NATIVE_DND and not HAS_DND:
             self.root.after(500, self._setup_native_dnd)
 
@@ -3715,11 +3832,11 @@ rm -rf "$STAGE"
 
         # Zoekbalk
         tk.Label(dlg, text=t("col_pick_search"), bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11)).pack(anchor="w", padx=16, pady=(14, 4))
+                 font=(UI_FONT, 11)).pack(anchor="w", padx=16, pady=(14, 4))
         search_var = tk.StringVar()
         ent = tk.Entry(dlg, textvariable=search_var, width=30,
                        bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
-                       relief="flat", font=("Helvetica Neue", 12),
+                       relief="flat", font=(UI_FONT, 12),
                        highlightthickness=1, highlightbackground=BORDER,
                        highlightcolor=AVID_B)
         ent.pack(padx=16, ipady=4, fill="x")
@@ -3733,7 +3850,7 @@ rm -rf "$STAGE"
         lb = tk.Listbox(frame_lb, yscrollcommand=sb.set,
                         bg=SURFACE, fg=TEXT, selectbackground=AVID_B,
                         selectforeground="white", relief="flat", bd=0,
-                        font=("Helvetica Neue", 11), activestyle="none",
+                        font=(UI_FONT, 11), activestyle="none",
                         height=16, width=32)
         sb.config(command=lb.yview)
         sb.pack(side="right", fill="y")
@@ -3763,11 +3880,11 @@ rm -rf "$STAGE"
         own_frame = tk.Frame(dlg, bg=BG)
         own_frame.pack(fill="x", padx=16, pady=8)
         tk.Label(own_frame, text=t("col_pick_own_label"), bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 10)).pack(side="left")
+                 font=(UI_FONT, 10)).pack(side="left")
         own_var = tk.StringVar()
         own_ent = tk.Entry(own_frame, textvariable=own_var, width=18,
                            bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
-                           relief="flat", font=("Helvetica Neue", 11),
+                           relief="flat", font=(UI_FONT, 11),
                            highlightthickness=1, highlightbackground=BORDER,
                            highlightcolor=AVID_B)
         own_ent.pack(side="left", padx=(8, 0), ipady=3)
@@ -3789,11 +3906,11 @@ rm -rf "$STAGE"
         btn_row.pack(anchor="e", padx=16, pady=(0, 14))
         _rounded_btn(btn_row, t("btn_cancel"), _cancel,
                      bg=SURFACE2, hv=SURFACE, fg=TEXT,
-                     font=("Helvetica Neue", 11), px=16, py=6, r=8, pbg=BG).pack(side="left", padx=(0, 8))
+                     font=(UI_FONT, 11), px=16, py=6, r=8, pbg=BG).pack(side="left", padx=(0, 8))
         _rounded_btn(btn_row, t("btn_pick"), lambda: _confirm(
                          _lb_map[lb.curselection()[0]] if lb.curselection() and _lb_map[lb.curselection()[0]] else None),
                      bg=AVID_B, hv="#2a6fbd", fg="white",
-                     font=("Helvetica Neue", 11, "bold"), px=16, py=6, r=8, pbg=BG).pack(side="left")
+                     font=(UI_FONT, 11, "bold"), px=16, py=6, r=8, pbg=BG).pack(side="left")
 
         dlg.update_idletasks()
         cx = anchor.winfo_x() + anchor.winfo_width()  // 2
@@ -3817,28 +3934,70 @@ rm -rf "$STAGE"
         PAD = 20
         ROW = 32
 
+        # ── Scrollbaar canvas zodat alles bereikbaar blijft (ook bij grote schaal) ─
+        _outer = tk.Frame(win, bg=BG)
+        _outer.pack(fill="both", expand=True)
+        _vsb = tk.Scrollbar(_outer, orient="vertical")
+        _vsb.pack(side="right", fill="y")
+        _pcv = tk.Canvas(_outer, bg=BG, bd=0, highlightthickness=0,
+                         yscrollcommand=_vsb.set)
+        _pcv.pack(side="left", fill="both", expand=True)
+        _vsb.config(command=_pcv.yview)
+        _content = tk.Frame(_pcv, bg=BG)
+        _pwin = _pcv.create_window((0, 0), window=_content, anchor="nw")
+
+        def _pcv_conf(e=None):
+            _pcv.configure(scrollregion=_pcv.bbox("all"))
+            _pcv.itemconfig(_pwin, width=_pcv.winfo_width())
+        _content.bind("<Configure>", _pcv_conf)
+        _pcv.bind("<Configure>", _pcv_conf)
+        def _pcv_wheel(e):
+            _pcv.yview_scroll(int(-1 * (e.delta / 60)), "units")
+        win.bind_all("<MouseWheel>", _pcv_wheel)
+        win.bind("<Destroy>", lambda e: win.unbind_all("<MouseWheel>"))
+
         # ── Titel ──────────────────────────────────────────────────────────
-        tk.Label(win, text=t("prefs_title"), bg=BG, fg=TEXT,
-                 font=("Helvetica Neue", 15, "bold")).pack(anchor="w", padx=PAD, pady=(PAD, 14))
+        tk.Label(_content, text=t("prefs_title"), bg=BG, fg=TEXT,
+                 font=(UI_FONT, 15, "bold")).pack(anchor="w", padx=PAD, pady=(PAD, 14))
 
-        tk.Frame(win, bg=BORDER, height=1).pack(fill="x", padx=PAD)
+        tk.Frame(_content, bg=BORDER, height=1).pack(fill="x", padx=PAD)
 
-        body = tk.Frame(win, bg=BG)
-        body.pack(fill="x", padx=PAD, pady=(14, 6))
-
-        def _section_hdr(parent, label):
-            f = tk.Frame(parent, bg=BG)
-            f.pack(fill="x", pady=(10, 2))
-            tk.Label(f, text=label, bg=BG, fg=AVID_B,
-                     font=("Helvetica Neue", 9, "bold")).pack(side="left")
-            tk.Frame(f, bg=BORDER, height=1).pack(
+        # In/uitklapbare secties: klik op de kop om te vouwen
+        _sec = [None]   # huidige sectie-inhoud waar rijen in komen
+        def _section(label, collapsed=False):
+            hdr = tk.Frame(_content, bg=BG, cursor="arrow")
+            hdr.pack(fill="x", padx=PAD, pady=(12, 2))
+            chev = tk.StringVar(value="▸" if collapsed else "▾")
+            tk.Label(hdr, textvariable=chev, bg=BG, fg=AVID_B,
+                     font=(UI_FONT, 9, "bold")).pack(side="left", padx=(0, 5))
+            tk.Label(hdr, text=label, bg=BG, fg=AVID_B,
+                     font=(UI_FONT, 9, "bold")).pack(side="left")
+            tk.Frame(hdr, bg=BORDER, height=1).pack(
                 side="left", fill="x", expand=True, padx=(8, 0), pady=(1, 0))
+            cont = tk.Frame(_content, bg=BG)
+            cont.pack(fill="x", padx=PAD, pady=(0, 4), after=hdr)
+            _sec[0] = cont
+            state = {"open": not collapsed}
+            if collapsed:
+                cont.pack_forget()
+            def _toggle(e=None):
+                state["open"] = not state["open"]
+                chev.set("▾" if state["open"] else "▸")
+                if state["open"]:
+                    # Altijd terug direct ná de eigen kop (behoud volgorde)
+                    cont.pack(fill="x", padx=PAD, pady=(0, 4), after=hdr)
+                else:
+                    cont.pack_forget()
+                self.root.after(1, _pcv_conf)
+            for wdg in (hdr, *hdr.winfo_children()):
+                wdg.bind("<Button-1>", _toggle)
+            return cont
 
         def _row(label):
-            f = tk.Frame(body, bg=BG, height=ROW)
+            f = tk.Frame(_sec[0], bg=BG, height=ROW)
             f.pack(fill="x", pady=3)
             tk.Label(f, text=label, bg=BG, fg=MUTED,
-                     font=("Helvetica Neue", 11), width=18, anchor="w").pack(side="left")
+                     font=(UI_FONT, 11), width=18, anchor="w").pack(side="left")
             return f
 
         # Stijl voor alle comboboxen in dit venster
@@ -3851,7 +4010,7 @@ rm -rf "$STAGE"
             all_values = list(values) + [CUSTOM]
             cb = ttk.Combobox(parent, textvariable=var, values=all_values,
                               state="normal", width=16,
-                              style="CB.TCombobox", font=("Helvetica Neue", 11))
+                              style="CB.TCombobox", font=(UI_FONT, 11))
             cb.pack(side="left")
             def _on_select(e):
                 if var.get() == CUSTOM:
@@ -3859,16 +4018,16 @@ rm -rf "$STAGE"
             cb.bind("<<ComboboxSelected>>", _on_select)
             return cb
 
-        _section_hdr(body, t("prefs_section_per_take"))
+        _section(t("prefs_section_per_take"))
 
         # Notes: checkbox + "→" + kolom-dropdown
         r2 = _row(t("prefs_notes"))
         tk.Checkbutton(r2, variable=self.write_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
-                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+                       font=(UI_FONT, 11), relief="flat", bd=0).pack(side="left")
         tk.Label(r2, text="→", bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+                 font=(UI_FONT, 11)).pack(side="left", padx=(4, 6))
         _cb(r2, self.notes_col, self.NOTES_COLS)
 
         # Scene: checkbox + "→" + kolom-dropdown (vink uit = originele Scene niet overschrijven)
@@ -3876,9 +4035,9 @@ rm -rf "$STAGE"
         tk.Checkbutton(r_scene, variable=self.write_scene,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
-                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+                       font=(UI_FONT, 11), relief="flat", bd=0).pack(side="left")
         tk.Label(r_scene, text="→", bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+                 font=(UI_FONT, 11)).pack(side="left", padx=(4, 6))
         _cb(r_scene, self.scene_col, ["Auto", "Scene"])
 
         # Rating: checkbox + "→" + kolom-dropdown + format (sterren/***/cijfer)
@@ -3886,12 +4045,12 @@ rm -rf "$STAGE"
         tk.Checkbutton(r1, variable=self.write_rating,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
-                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+                       font=(UI_FONT, 11), relief="flat", bd=0).pack(side="left")
         tk.Label(r1, text="→", bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+                 font=(UI_FONT, 11)).pack(side="left", padx=(4, 6))
         _cb(r1, self.rating_col, self.RATING_COLS)
         tk.Label(r1, text=t("prefs_stars_as"), bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 10)).pack(side="left", padx=(10, 4))
+                 font=(UI_FONT, 10)).pack(side="left", padx=(10, 4))
         _STAR_DISPLAY = [t("prefs_stars_stars"), t("prefs_stars_number"), t("prefs_stars_letter")]
         _STAR_TO_CODE = {t("prefs_stars_stars"): "sterren", t("prefs_stars_number"): "cijfer", t("prefs_stars_letter"): "letters"}
         _CODE_TO_STAR = {"sterren": t("prefs_stars_stars"), "cijfer": t("prefs_stars_number"), "letters": t("prefs_stars_letter")}
@@ -3899,7 +4058,7 @@ rm -rf "$STAGE"
         _star_cb = ttk.Combobox(r1, textvariable=_star_display,
                      values=_STAR_DISPLAY, state="readonly", width=13,
                      style="CB.TCombobox",
-                     font=("Helvetica Neue", 11))
+                     font=(UI_FONT, 11))
         _star_cb.pack(side="left")
         def _on_star_fmt(e):
             self.star_format.set(_STAR_TO_CODE.get(_star_display.get(), "sterren"))
@@ -3911,12 +4070,12 @@ rm -rf "$STAGE"
         tk.Checkbutton(r5, variable=self.write_pu_in_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
-                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+                       font=(UI_FONT, 11), relief="flat", bd=0).pack(side="left")
         tk.Label(r5, text="→", bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+                 font=(UI_FONT, 11)).pack(side="left", padx=(4, 6))
         _cb(r5, self.pu_col, PU_COLS)
         tk.Label(r5, text=t("prefs_position"), bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 10)).pack(side="left", padx=(8, 4))
+                 font=(UI_FONT, 10)).pack(side="left", padx=(8, 4))
         _POS_DISPLAY = [t("prefs_pos_before"), t("prefs_pos_after")]
         _POS_TO_CODE = {t("prefs_pos_before"): "voor", t("prefs_pos_after"): "achter"}
         _CODE_TO_POS = {"voor": t("prefs_pos_before"), "achter": t("prefs_pos_after")}
@@ -3924,7 +4083,7 @@ rm -rf "$STAGE"
         _pu_pos_cb = ttk.Combobox(r5, textvariable=_pu_pos_display,
                      values=_POS_DISPLAY, state="readonly", width=7,
                      style="CB.TCombobox",
-                     font=("Helvetica Neue", 11))
+                     font=(UI_FONT, 11))
         _pu_pos_cb.pack(side="left")
         def _on_pu_pos(e):
             self.pu_position.set(_POS_TO_CODE.get(_pu_pos_display.get(), "voor"))
@@ -3935,14 +4094,14 @@ rm -rf "$STAGE"
         tk.Checkbutton(r5b, variable=self.pu_eigen_kolom,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
-                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+                       font=(UI_FONT, 11), relief="flat", bd=0).pack(side="left")
         tk.Label(r5b, text="→", bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+                 font=(UI_FONT, 11)).pack(side="left", padx=(4, 6))
         tk.Label(r5b, text=t("prefs_pu_col_name") + ":", bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 10)).pack(side="left", padx=(0, 4))
+                 font=(UI_FONT, 10)).pack(side="left", padx=(0, 4))
         _pu_kn_entry = tk.Entry(r5b, textvariable=self.pu_eigen_kolom_naam,
                                 width=10, bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
-                                relief="flat", font=("Helvetica Neue", 11))
+                                relief="flat", font=(UI_FONT, 11))
         _pu_kn_entry.pack(side="left")
 
         # AFG: checkbox + "→" + kolom-dropdown + voor/achter
@@ -3951,30 +4110,27 @@ rm -rf "$STAGE"
         tk.Checkbutton(r6, variable=self.write_afg_in_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
-                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+                       font=(UI_FONT, 11), relief="flat", bd=0).pack(side="left")
         tk.Label(r6, text="→", bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+                 font=(UI_FONT, 11)).pack(side="left", padx=(4, 6))
         _cb(r6, self.afg_col, AFG_COLS)
         tk.Label(r6, text=t("prefs_position"), bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 10)).pack(side="left", padx=(8, 4))
+                 font=(UI_FONT, 10)).pack(side="left", padx=(8, 4))
         _afg_pos_display = tk.StringVar(value=_CODE_TO_POS.get(self.afg_position.get(), _POS_DISPLAY[0]))
         _afg_pos_cb = ttk.Combobox(r6, textvariable=_afg_pos_display,
                      values=_POS_DISPLAY, state="readonly", width=7,
                      style="CB.TCombobox",
-                     font=("Helvetica Neue", 11))
+                     font=(UI_FONT, 11))
         _afg_pos_cb.pack(side="left")
         def _on_afg_pos(e):
             self.afg_position.set(_POS_TO_CODE.get(_afg_pos_display.get(), "voor"))
         _afg_pos_cb.bind("<<ComboboxSelected>>", _on_afg_pos)
 
-        body2 = tk.Frame(win, bg=BG)
-        body2.pack(fill="x", padx=PAD)
-
         def _row2(label):
-            f = tk.Frame(body2, bg=BG, height=ROW)
+            f = tk.Frame(_sec[0], bg=BG, height=ROW)
             f.pack(fill="x", pady=3)
             tk.Label(f, text=label, bg=BG, fg=MUTED,
-                     font=("Helvetica Neue", 11), width=18, anchor="w").pack(side="left")
+                     font=(UI_FONT, 11), width=18, anchor="w").pack(side="left")
             return f
 
         SOUND_COLS  = ["Sound_Notes", "Sound", "Audio_Notes"]
@@ -3985,54 +4141,52 @@ rm -rf "$STAGE"
             CUSTOM = t("col_pick_placeholder")
             cb = ttk.Combobox(parent, textvariable=var, values=list(values) + [CUSTOM],
                               state="normal", width=16,
-                              style="CB.TCombobox", font=("Helvetica Neue", 11))
+                              style="CB.TCombobox", font=(UI_FONT, 11))
             cb.pack(side="left")
             cb.bind("<<ComboboxSelected>>",
                     lambda e: self._pick_column(var, win) if var.get() == CUSTOM else None)
             return cb
 
-        _section_hdr(body2, t("prefs_section_general"))
+        _section(t("prefs_section_general"))
 
         r7 = _row2(t("prefs_sound_notes"))
         tk.Checkbutton(r7, variable=self.write_sound_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
-                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+                       font=(UI_FONT, 11), relief="flat", bd=0).pack(side="left")
         tk.Label(r7, text="→", bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+                 font=(UI_FONT, 11)).pack(side="left", padx=(4, 6))
         _cb2(r7, self.sound_notes_col, SOUND_COLS)
 
         r8 = _row2(t("prefs_camera_notes"))
         tk.Checkbutton(r8, variable=self.write_camera_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
-                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+                       font=(UI_FONT, 11), relief="flat", bd=0).pack(side="left")
         tk.Label(r8, text="→", bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+                 font=(UI_FONT, 11)).pack(side="left", padx=(4, 6))
         _cb2(r8, self.camera_notes_col, CAMERA_COLS)
 
         r9 = _row2(t("prefs_opmerkingen"))
         tk.Checkbutton(r9, variable=self.write_general_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
                        activebackground=BG, activeforeground=TEXT,
-                       font=("Helvetica Neue", 11), relief="flat", bd=0).pack(side="left")
+                       font=(UI_FONT, 11), relief="flat", bd=0).pack(side="left")
         tk.Label(r9, text="→", bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11)).pack(side="left", padx=(4, 6))
+                 font=(UI_FONT, 11)).pack(side="left", padx=(4, 6))
         _cb2(r9, self.general_notes_col, GEN_COLS)
 
-        tk.Frame(win, bg=BORDER, height=1).pack(fill="x", padx=PAD, pady=(12, 0))
+        # ── UITVOER ───────────────────────────────────────────────────────────
+        _out = _section(t("prefs_section_output"))
 
-        # Uitvoermap — helemaal onderaan
-        body3 = tk.Frame(win, bg=BG)
-        body3.pack(fill="x", padx=PAD, pady=(8, 0))
-
-        r4 = tk.Frame(body3, bg=BG, height=ROW)
+        # Uitvoermap
+        r4 = tk.Frame(_out, bg=BG, height=ROW)
         r4.pack(fill="x", pady=4)
         tk.Label(r4, text=t("prefs_output_dir"), bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11), width=18, anchor="w").pack(side="left")
+                 font=(UI_FONT, 11), width=18, anchor="w").pack(side="left")
         out_entry = tk.Entry(r4, textvariable=self.output_dir, width=22,
                              bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
-                             relief="flat", font=("Helvetica Neue", 11),
+                             relief="flat", font=(UI_FONT, 11),
                              highlightthickness=1, highlightbackground=BORDER,
                              highlightcolor=AVID_B)
         out_entry.pack(side="left", ipady=3)
@@ -4044,56 +4198,51 @@ rm -rf "$STAGE"
                 self.output_dir.set(d)
         _rounded_btn(r4, t("btn_choose_dir"), _pick_dir,
                      bg=SURFACE2, hv=BORDER, fg=TEXT,
-                     font=("Helvetica Neue", 11), px=10, py=3, r=6,
+                     font=(UI_FONT, 11), px=10, py=3, r=6,
                      pbg=BG).pack(side="left", padx=(4, 0))
         tk.Label(r4, text=t("prefs_output_dir_hint"), bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 10)).pack(side="left", padx=(8, 0))
+                 font=(UI_FONT, 10)).pack(side="left", padx=(8, 0))
 
-        r4b = tk.Frame(body3, bg=BG, height=ROW)
+        # Bestandsnaam
+        r4b = tk.Frame(_out, bg=BG, height=ROW)
         r4b.pack(fill="x", pady=4)
         tk.Label(r4b, text=t("prefs_filename"), bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11), width=18, anchor="w").pack(side="left")
+                 font=(UI_FONT, 11), width=18, anchor="w").pack(side="left")
         tk.Label(r4b, text=t("prefs_filename_orig"), bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 10)).pack(side="left")
+                 font=(UI_FONT, 10)).pack(side="left")
         tk.Entry(r4b, textvariable=self.output_suffix, width=20,
                  bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
-                 relief="flat", font=("Helvetica Neue", 11),
+                 relief="flat", font=(UI_FONT, 11),
                  highlightthickness=1, highlightbackground=BORDER,
                  highlightcolor=AVID_B).pack(side="left", ipady=3, padx=(4, 0))
         tk.Label(r4b, text=".ALE", bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 10)).pack(side="left", padx=(4, 0))
+                 font=(UI_FONT, 10)).pack(side="left", padx=(4, 0))
 
-        tk.Frame(win, bg=BORDER, height=1).pack(fill="x", padx=PAD, pady=(8, 0))
+        # Map met resultaat openen na verwerken
+        r_open = tk.Frame(_out, bg=BG)
+        r_open.pack(fill="x", pady=3)
+        tk.Checkbutton(r_open, variable=self.open_folder_after,
+                       bg=BG, fg=TEXT, selectcolor=SURFACE2,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=(UI_FONT, 11), relief="flat", bd=0).pack(side="left")
+        tk.Label(r_open, text=t("prefs_open_folder"), bg=BG, fg=MUTED,
+                 font=(UI_FONT, 11)).pack(side="left", padx=(4, 0))
 
-        # ── Taal / Language / Sprache ─────────────────────────────────────────
-        body_lang = tk.Frame(win, bg=BG)
-        body_lang.pack(fill="x", padx=PAD, pady=(8, 0))
-        r_lang = tk.Frame(body_lang, bg=BG, height=32)
-        r_lang.pack(fill="x", pady=3)
-        tk.Label(r_lang, text=t("prefs_lang_label"), bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11), width=24, anchor="w").pack(side="left")
-        _LANG_OPTIONS = ["🇳🇱 Nederlands", "🇬🇧 English", "🇩🇪 Deutsch"]
-        _LANG_CODES   = {"🇳🇱 Nederlands": "nl", "🇬🇧 English": "en", "🇩🇪 Deutsch": "de"}
-        _LANG_LABELS  = {v: k for k, v in _LANG_CODES.items()}
-        _lang_display = tk.StringVar(value=_LANG_LABELS.get(self.language.get(), "🇳🇱 Nederlands"))
-        lang_cb = ttk.Combobox(r_lang, textvariable=_lang_display,
-                               values=_LANG_OPTIONS, state="readonly", width=16,
-                               style="CB.TCombobox", font=("Helvetica Neue", 11))
-        lang_cb.pack(side="left")
-        lang_hint = tk.Label(r_lang, text=t("prefs_lang_restart_hint"),
-                             bg=BG, fg=MUTED, font=("Helvetica Neue", 9))
-        lang_hint.pack(side="left", padx=(10, 0))
-        def _on_lang_change(e):
-            code = _LANG_CODES.get(_lang_display.get(), "nl")
-            self.language.set(code)
-            self._save_prefs_all()
-        lang_cb.bind("<<ComboboxSelected>>", _on_lang_change)
+        # Umlauten transliteren (vangnet voor oude Avid)
+        r_translit = tk.Frame(_out, bg=BG)
+        r_translit.pack(fill="x", pady=3)
+        tk.Checkbutton(r_translit, variable=self.translit_umlauts,
+                       bg=BG, fg=TEXT, selectcolor=SURFACE2,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=(UI_FONT, 11), relief="flat", bd=0).pack(side="left")
+        tk.Label(r_translit, text=t("prefs_translit"), bg=BG, fg=MUTED,
+                 font=(UI_FONT, 11)).pack(side="left", padx=(4, 0))
 
-        # Wissen na verwerken: modus (Uit/Vragen/Automatisch) + vertraging in stappen van 5
-        r_clear = tk.Frame(body_lang, bg=BG)
+        # Wissen na verwerken: modus + vertraging
+        r_clear = tk.Frame(_out, bg=BG)
         r_clear.pack(fill="x", pady=3)
         tk.Label(r_clear, text=t("prefs_clear_label"), bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 11), width=24, anchor="w").pack(side="left")
+                 font=(UI_FONT, 11), width=18, anchor="w").pack(side="left")
         _CLEAR_OPTS  = [t("clear_mode_uit"), t("clear_mode_vragen"), t("clear_mode_auto")]
         _CLEAR_CODES = {t("clear_mode_uit"): "uit", t("clear_mode_vragen"): "vragen",
                         t("clear_mode_auto"): "automatisch"}
@@ -4102,26 +4251,22 @@ rm -rf "$STAGE"
                                                            t("clear_mode_vragen")))
         clear_cb = ttk.Combobox(r_clear, textvariable=_clear_disp,
                                 values=_CLEAR_OPTS, state="readonly", width=12,
-                                style="CB.TCombobox", font=("Helvetica Neue", 11))
+                                style="CB.TCombobox", font=(UI_FONT, 11))
         clear_cb.pack(side="left")
-
-        # Vertraging-selector (stappen van 5), alleen relevant bij Vragen/Automatisch
         _delay_lbl = tk.Label(r_clear, text=t("prefs_clear_delay"), bg=BG, fg=MUTED,
-                              font=("Helvetica Neue", 10))
+                              font=(UI_FONT, 10))
         _delay_lbl.pack(side="left", padx=(10, 4))
         _DELAYS = [str(s) for s in range(0, 61, 5)]
         _delay_disp = tk.StringVar(value=str(self.clear_delay.get()))
         delay_cb = ttk.Combobox(r_clear, textvariable=_delay_disp,
                                 values=_DELAYS, state="readonly", width=4,
-                                style="CB.TCombobox", font=("Helvetica Neue", 11))
+                                style="CB.TCombobox", font=(UI_FONT, 11))
         delay_cb.pack(side="left")
         tk.Label(r_clear, text=t("clear_delay_unit"), bg=BG, fg=MUTED,
-                 font=("Helvetica Neue", 10)).pack(side="left", padx=(4, 0))
-
+                 font=(UI_FONT, 10)).pack(side="left", padx=(4, 0))
         def _sync_delay_state():
             on = self.clear_mode.get() in ("vragen", "automatisch")
-            st = "readonly" if on else "disabled"
-            delay_cb.config(state=st)
+            delay_cb.config(state="readonly" if on else "disabled")
             _delay_lbl.config(fg=MUTED if on else BORDER)
         def _on_clear_mode(e=None):
             self.clear_mode.set(_CLEAR_CODES.get(_clear_disp.get(), "vragen"))
@@ -4133,21 +4278,170 @@ rm -rf "$STAGE"
         delay_cb.bind("<<ComboboxSelected>>", _on_delay)
         _sync_delay_state()
 
-        tk.Frame(win, bg=BORDER, height=1).pack(fill="x", padx=PAD, pady=(8, 0))
+        # ── UITERLIJK ─────────────────────────────────────────────────────────
+        _app = _section(t("prefs_section_appearance"), collapsed=True)
+
+        # Interfacegrootte: custom canvas-slider 10-200% + reset
+        r_scale = tk.Frame(_app, bg=BG)
+        r_scale.pack(fill="x", pady=3)
+        tk.Label(r_scale, text=t("prefs_ui_scale"), bg=BG, fg=MUTED,
+                 font=(UI_FONT, 11), width=18, anchor="w").pack(side="left")
+        _SL_W, _SL_H, _LO, _HI = 180, 24, 10, 200
+        _sl_cv = tk.Canvas(r_scale, width=_SL_W, height=_SL_H, bg=BG,
+                           bd=0, highlightthickness=0, cursor="arrow")
+        _sl_cv.pack(side="left")
+        _sl_lbl = tk.Label(r_scale, text=f"{self.ui_scale.get()}%", bg=BG, fg=TEXT,
+                           width=5, anchor="w", font=(UI_FONT, 11))
+        _sl_lbl.pack(side="left", padx=(8, 0))
+        _pad = 10
+        def _val_to_x(v):
+            return _pad + (v - _LO) / (_HI - _LO) * (_SL_W - 2 * _pad)
+        def _x_to_val(x):
+            frac = (x - _pad) / (_SL_W - 2 * _pad)
+            v = _LO + max(0.0, min(1.0, frac)) * (_HI - _LO)
+            return int(round(v / 5) * 5)
+        def _draw_slider():
+            _sl_cv.delete("all")
+            cy = _SL_H // 2
+            _sl_cv.create_line(_pad, cy, _SL_W - _pad, cy,
+                               fill=SURFACE2, width=4, capstyle="round")
+            hx = _val_to_x(self.ui_scale.get())
+            _sl_cv.create_line(_pad, cy, hx, cy,
+                               fill=AVID_B, width=4, capstyle="round")
+            _sl_cv.create_oval(hx - 8, cy - 8, hx + 8, cy + 8,
+                               fill="white", outline=AVID_B, width=2)
+        def _set_from_x(x):
+            v = _x_to_val(x)
+            if v != self.ui_scale.get():
+                self.ui_scale.set(v)
+                _sl_lbl.config(text=f"{v}%")
+            _draw_slider()
+        def _on_drag(e):
+            _set_from_x(e.x)
+        def _on_release(e):
+            _set_from_x(e.x)
+            self._apply_appearance_live()
+            _draw_slider()
+        _sl_cv.bind("<Button-1>", _on_drag)
+        _sl_cv.bind("<B1-Motion>", _on_drag)
+        _sl_cv.bind("<ButtonRelease-1>", _on_release)
+        _draw_slider()
+        # Reset-knop (rondje-pijltje) → terug naar 100%
+        _reset_lbl = tk.Label(r_scale, text="↺", bg=BG, fg=MUTED,
+                              font=(UI_FONT, 15), cursor="arrow")
+        _reset_lbl.pack(side="left", padx=(4, 0))
+        def _reset_scale(e=None):
+            self.ui_scale.set(100)
+            _sl_lbl.config(text="100%")
+            self._apply_appearance_live()
+            _draw_slider()
+        _reset_lbl.bind("<Button-1>", _reset_scale)
+        _reset_lbl.bind("<Enter>", lambda e: _reset_lbl.config(fg=AVID_B))
+        _reset_lbl.bind("<Leave>", lambda e: _reset_lbl.config(fg=MUTED))
+
+        # Lettertype — elke keuze in z'n eigen font, met "Aa"-preview
+        r_font = tk.Frame(_app, bg=BG)
+        r_font.pack(fill="x", pady=3)
+        tk.Label(r_font, text=t("prefs_ui_font"), bg=BG, fg=MUTED,
+                 font=(UI_FONT, 11), width=18, anchor="w").pack(side="left", anchor="n")
+        _font_wrap = tk.Frame(r_font, bg=BG)
+        _font_wrap.pack(side="left")
+        _FONT_OPTS = [
+            ("helvetica", t("font_helvetica"), "Helvetica Neue"),
+            ("systeem",   t("font_systeem"),   ".AppleSystemUIFont"),
+            ("leesbaar",  t("font_leesbaar"),  "Verdana"),
+        ]
+        _font_cells = {}
+        def _refresh_fonts():
+            for code, cell in _font_cells.items():
+                sel = (self.ui_font.get() == code)
+                cell.config(highlightbackground=AVID_B if sel else BORDER,
+                            highlightthickness=2 if sel else 1)
+        for code, label, fam in _FONT_OPTS:
+            cell = tk.Frame(_font_wrap, bg=SURFACE2, highlightthickness=1,
+                            highlightbackground=BORDER, cursor="arrow")
+            cell.pack(side="left", padx=(0, 6))
+            tk.Label(cell, text="Aa", bg=SURFACE2, fg=TEXT,
+                     font=(fam, 18, "bold")).pack(padx=10, pady=(6, 0))
+            _is_read = (code == "leesbaar")
+            _lbl_font = (UI_FONT, 10, "bold") if _is_read else (UI_FONT, 9)
+            tk.Label(cell, text=label, bg=SURFACE2,
+                     fg=TEXT if _is_read else MUTED,
+                     font=_lbl_font).pack(padx=10, pady=(0, 6))
+            def _pick_font(e, c=code):
+                self.ui_font.set(c)
+                self._apply_appearance_live()
+                _refresh_fonts()
+            for wdg in (cell, *cell.winfo_children()):
+                wdg.bind("<Button-1>", _pick_font)
+            _font_cells[code] = cell
+        _refresh_fonts()
+
+        # Accentkleur: kleur-swatches
+        r_accent = tk.Frame(_app, bg=BG)
+        r_accent.pack(fill="x", pady=3)
+        tk.Label(r_accent, text=t("prefs_accent"), bg=BG, fg=MUTED,
+                 font=(UI_FONT, 11), width=18, anchor="w").pack(side="left")
+        _sw_wrap = tk.Frame(r_accent, bg=BG)
+        _sw_wrap.pack(side="left")
+        _sw = {}
+        def _refresh_sw():
+            for code, cv in _sw.items():
+                cv.delete("ring")
+                if self.accent.get() == code:
+                    cv.create_oval(2, 2, 22, 22, outline=TEXT, width=2, tags="ring")
+        for code, (base, _h, _a) in ACCENT_THEMES.items():
+            cv = tk.Canvas(_sw_wrap, width=26, height=26, bg=BG, bd=0,
+                           highlightthickness=0, cursor="arrow")
+            cv.pack(side="left", padx=(0, 6))
+            cv.create_oval(5, 5, 21, 21, fill=base, outline="")
+            def _pick(e, c=code):
+                self.accent.set(c)
+                self._apply_appearance_live()
+                _refresh_sw()
+            cv.bind("<Button-1>", _pick)
+            _sw[code] = cv
+        _refresh_sw()
+
+        # ── TAAL ──────────────────────────────────────────────────────────────
+        _langsec = _section(t("prefs_section_language"), collapsed=True)
+        r_lang = tk.Frame(_langsec, bg=BG, height=32)
+        r_lang.pack(fill="x", pady=3)
+        tk.Label(r_lang, text=t("prefs_lang_label"), bg=BG, fg=MUTED,
+                 font=(UI_FONT, 11), width=18, anchor="w").pack(side="left")
+        _LANG_OPTIONS = ["\U0001F1F3\U0001F1F1 Nederlands", "\U0001F1EC\U0001F1E7 English", "\U0001F1E9\U0001F1EA Deutsch"]
+        _LANG_CODES   = {_LANG_OPTIONS[0]: "nl", _LANG_OPTIONS[1]: "en", _LANG_OPTIONS[2]: "de"}
+        _LANG_LABELS  = {v: k for k, v in _LANG_CODES.items()}
+        _lang_display = tk.StringVar(value=_LANG_LABELS.get(self.language.get(), _LANG_OPTIONS[0]))
+        lang_cb = ttk.Combobox(r_lang, textvariable=_lang_display,
+                               values=_LANG_OPTIONS, state="readonly", width=16,
+                               style="CB.TCombobox", font=(UI_FONT, 11))
+        lang_cb.pack(side="left")
+        tk.Label(r_lang, text=t("prefs_lang_restart_hint"),
+                 bg=BG, fg=MUTED, font=(UI_FONT, 9)).pack(side="left", padx=(10, 0))
+        def _on_lang_change(e):
+            self.language.set(_LANG_CODES.get(_lang_display.get(), "nl"))
+            self._save_prefs_all()
+        lang_cb.bind("<<ComboboxSelected>>", _on_lang_change)
+
 
         # Sluit-knop
-        btn = _rounded_btn(win, t("btn_close"), win.destroy,
+        btn = _rounded_btn(_content, t("btn_close"), win.destroy,
                            bg=AVID_B, hv="#2a6fbd", fg="white",
-                           font=("Helvetica Neue", 12, "bold"),
+                           font=(UI_FONT, 12, "bold"),
                            px=24, py=8, r=10, pbg=BG)
         btn.pack(anchor="e", padx=PAD, pady=PAD)
 
         win.update_idletasks()
-        # Centreer op hoofdvenster
-        mw = self.root.winfo_x() + self.root.winfo_width()  // 2
-        mh = self.root.winfo_y() + self.root.winfo_height() // 2
-        w, h = win.winfo_width(), win.winfo_height()
-        win.geometry(f"+{mw - w//2}+{mh - h//2}")
+        _pcv_conf()
+        # Expliciete grootte: content-breedte, hoogte gemaximeerd op ~85% scherm
+        sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+        w = _content.winfo_reqwidth() + 16    # ruimte voor scrollbalk
+        h = min(_content.winfo_reqheight(), int(sh * 0.85))
+        x = max(20, (sw - w) // 2)
+        y = max(20, (sh - h) // 3)
+        win.geometry(f"{w}x{h}+{x}+{y}")
+        win.resizable(False, True)   # verticaal schaalbaar
         win.wait_window()
 
     def _setup_native_dnd(self):
@@ -4447,51 +4741,62 @@ rm -rf "$STAGE"
     def _ui(self):
         # ── Header (gradient canvas) ─────────────────────────────────────────
         _HDR_H  = 56
-        _GL     = (0xA0, 0x30, 0xFF)   # links: fel elektrisch violet
-        _GR     = (0x50, 0x10, 0xC0)   # rechts: levendig indigo (niet zwart)
 
         hdr_cv = tk.Canvas(self.root, height=_HDR_H, bd=0, highlightthickness=0)
         hdr_cv.pack(fill="x")
+
+        def _hex_rgb(h):
+            h = h.lstrip('#')
+            return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
 
         def _draw_hdr(event=None):
             w = hdr_cv.winfo_width()
             if w < 2:
                 hdr_cv.after(20, _draw_hdr); return
+            # Gradient afgeleid van de huidige accentkleur (AVID_B → donkerder)
+            gl = _hex_rgb(ACCENT2 if ACCENT2 else AVID_B)
+            gr = _hex_rgb(AVID_B_H)
             hdr_cv.delete("all")
             step = max(1, w // 300)
             for x in range(0, w + step, step):
-                t = min(x / (w - 1), 1.0)
-                r = int(_GL[0] + (_GR[0] - _GL[0]) * t)
-                g = int(_GL[1] + (_GR[1] - _GL[1]) * t)
-                b = int(_GL[2] + (_GR[2] - _GL[2]) * t)
+                tt = min(x / (w - 1), 1.0)
+                r = int(gl[0] + (gr[0] - gl[0]) * tt)
+                g = int(gl[1] + (gr[1] - gl[1]) * tt)
+                b = int(gl[2] + (gr[2] - gl[2]) * tt)
                 hdr_cv.create_rectangle(x, 0, x + step, _HDR_H,
                                         fill=f"#{r:02x}{g:02x}{b:02x}", outline="")
             hdr_cv.create_text(22, _HDR_H // 2,
                                text="✦  Continuity Bridge", anchor="w",
-                               fill="white", font=("Helvetica Neue", 15, "bold"))
+                               fill="white", font=(UI_FONT, 15, "bold"))
             hdr_cv.create_text(w - 18, _HDR_H // 2,
                                text=f"v{VERSION}", anchor="e",
-                               fill="#C0A0FF", font=("Helvetica Neue", 10))
+                               fill="white", font=(UI_FONT, 10))
 
         hdr_cv.bind("<Configure>", _draw_hdr)
+        self._redraw_header = _draw_hdr
 
         # ── Body ─────────────────────────────────────────────────────────────
         body = tk.Frame(self.root, bg=BG, pady=22, padx=22)
         body.pack(fill="x")
 
         # Sectielabels met genummerd badge
+        self._badges = []   # (canvas, nummer) — voor live herkleuren bij accentwissel
         def _section_label(parent, number, text):
             row = tk.Frame(parent, bg=BG)
             row.pack(fill="x", pady=(0, 7))
-            # Badge: klein paars vierkantje met nummer
+            # Badge: klein accent-vierkantje met nummer
             badge = tk.Canvas(row, width=20, height=20, bg=BG,
                               bd=0, highlightthickness=0)
             badge.pack(side="left", padx=(0, 8))
-            badge.create_rectangle(0, 0, 20, 20, fill=AVID_B, outline="")
-            badge.create_text(10, 10, text=str(number), fill="white",
-                              font=("Helvetica Neue", 11, "bold"))
+            def _draw_badge():
+                badge.delete("all")
+                badge.create_rectangle(0, 0, 20, 20, fill=AVID_B, outline="")
+                badge.create_text(10, 10, text=str(number), fill="white",
+                                  font=(UI_FONT, 11, "bold"))
+            _draw_badge()
+            self._badges.append(_draw_badge)
             tk.Label(row, text=text.upper(), bg=BG, fg=MUTED,
-                     font=("Helvetica Neue", 11, "bold"), anchor="w").pack(side="left")
+                     font=(UI_FONT, 11, "bold"), anchor="w").pack(side="left")
 
         _section_label(body, 1, t("section_ale"))
         self._multi_file_widget(body, self.ale_paths, "ALE").pack(fill="x", pady=(0, 14))
@@ -4524,7 +4829,7 @@ rm -rf "$STAGE"
         self.root.option_add("*TCombobox*Listbox.foreground",       TEXT)
         self.root.option_add("*TCombobox*Listbox.selectBackground", AVID_B)
         self.root.option_add("*TCombobox*Listbox.selectForeground", "white")
-        self.root.option_add("*TCombobox*Listbox.font",             "{{Helvetica Neue} 12}")
+        self.root.option_add("*TCombobox*Listbox.font",             f"{{{UI_FONT}}} 12")
         self.root.option_add("*TCombobox*Listbox.relief",           "flat")
         self.root.option_add("*TCombobox*Listbox.borderWidth",      "0")
 
@@ -4540,7 +4845,7 @@ rm -rf "$STAGE"
             cb = ttk.Combobox(parent, textvariable=var,
                               values=_make_col_values(recent_key),
                               state="readonly", width=width,
-                              style="CB.TCombobox", font=("Helvetica Neue", 12))
+                              style="CB.TCombobox", font=(UI_FONT, 12))
             cb.pack(side="left", fill="x", expand=True)
             def _on_select(e):
                 if var.get() == PICK:
@@ -4574,7 +4879,7 @@ rm -rf "$STAGE"
         hint_lbl = tk.Label(hint_row,
                             text=t("hint_more_settings"),
                             bg=BG, fg=MUTED,
-                            font=("Helvetica Neue", 11), cursor="arrow", anchor="w")
+                            font=(UI_FONT, 11), cursor="arrow", anchor="w")
         hint_lbl.pack(side="left", fill="x", expand=True)
         hint_lbl.bind("<Button-1>", lambda e: self._show_prefs())
         hint_lbl.bind("<Enter>",    lambda e: hint_lbl.config(fg=TEXT))
@@ -4593,19 +4898,16 @@ rm -rf "$STAGE"
 
         clear_cv = _rounded_btn(hint_row, t("btn_clear_all"), _clear_all,
                                 bg=SURFACE2, hv=BORDER, fg=MUTED,
-                                font=("Helvetica Neue", 11), px=11, py=4, r=8, pbg=BG)
+                                font=(UI_FONT, 11), px=11, py=4, r=8, pbg=BG)
         clear_cv.pack(side="right")
 
         # ── Verwerk-knop (afgeronde Canvas, full-width) ──────────────────────
-        _VF = ("Helvetica Neue", 16, "bold")
+        _VF = (UI_FONT, 16, "bold")
         _VH = 52   # hoogte
         _VR = 12   # hoek-radius
         self._btn_enabled = True
         self.btn = tk.Canvas(body, height=_VH, bd=0, highlightthickness=0, bg=BG, cursor="arrow")
         self.btn.pack(fill="x")
-
-        _BTN_TL = "#B040FF"   # diagonaal links-boven: fel violet
-        _BTN_BR = "#5814C0"   # diagonaal rechts-onder: diep paars
 
         def _draw_verwerk(label=None, darken=0.0, disabled=False):
             if label is None:
@@ -4615,8 +4917,9 @@ rm -rf "$STAGE"
             if disabled:
                 _rrect(self.btn, w, _VH, _VR, SURFACE2, MUTED, label, _VF)
             else:
+                # Gradient afgeleid van de huidige accentkleur (licht → donker)
                 _rrect_gradient(self.btn, w, _VH, _VR,
-                                _BTN_TL, _BTN_BR, "#FFFFFF", label, _VF,
+                                ACCENT2, AVID_B_H, "#FFFFFF", label, _VF,
                                 darken=darken)
 
         def _on_verwerk_resize(e):
@@ -4655,7 +4958,7 @@ rm -rf "$STAGE"
         log_frame.pack(fill="both", expand=True)
 
         self.log_box = tk.Text(log_frame, bg=SURFACE, fg=MUTED,
-            font=("Menlo", 11), relief="flat", bd=0, highlightthickness=0,
+            font=(MONO_FONT, 11), relief="flat", bd=0, highlightthickness=0,
             padx=14, pady=12, wrap="word", state="disabled", height=5,
             cursor="arrow")
 
@@ -4704,7 +5007,7 @@ rm -rf "$STAGE"
         )
         # Extensietekst
         cv.create_text(W//2, H//2 + 3, text=ext,
-                       fill="white", font=("Helvetica Neue", 8, "bold"))
+                       fill="white", font=(UI_FONT, 8, "bold"))
         return cv
 
     def _multi_file_widget(self, parent, paths_list, file_type):
@@ -4746,13 +5049,13 @@ rm -rf "$STAGE"
         status_lbl = tk.Label(status_row,
                               text=t("file_drop_hint"),
                               bg=SURFACE, fg="#A99CDC",
-                              font=("Helvetica Neue", 11), anchor="w")
+                              font=(UI_FONT, 11), anchor="w")
         status_lbl.pack(side="left", fill="x", expand=True)
 
         pick_fn = self._pick_ale if file_type == "ALE" else self._pick_pdf
         add_cv  = _rounded_btn(status_row, t("btn_choose"), pick_fn,
                                bg=SURFACE2, hv=BORDER, fg=TEXT,
-                               font=("Helvetica Neue", 11), px=11, py=4, r=6,
+                               font=(UI_FONT, 11), px=11, py=4, r=6,
                                pbg=SURFACE)
         add_cv.pack(side="right")
 
@@ -4781,11 +5084,11 @@ rm -rf "$STAGE"
                     bc.pack(side="left", padx=(10, 6), pady=10)
                     bc.create_rectangle(0, 0, 32, 18, fill=badge_color, outline="")
                     bc.create_text(16, 9, text=file_type,
-                                   fill="white", font=("Helvetica Neue", 8, "bold"))
+                                   fill="white", font=(UI_FONT, 8, "bold"))
 
                     # Bestandsnaam
                     tk.Label(row, text=Path(p).name, bg=SURFACE, fg=TEXT,
-                             font=("Helvetica Neue", 11), anchor="w").pack(
+                             font=(UI_FONT, 11), anchor="w").pack(
                                  side="left", fill="x", expand=True)
 
                     # × verwijderknop
@@ -4794,7 +5097,7 @@ rm -rf "$STAGE"
                         _refresh()
 
                     rm = tk.Label(row, text="×", bg=SURFACE, fg=MUTED,
-                                  font=("Helvetica Neue", 14), cursor="arrow",
+                                  font=(UI_FONT, 14), cursor="arrow",
                                   padx=10, pady=0)
                     rm.pack(side="right")
                     rm.bind("<Button-1>", lambda e, fn=_rm: fn())
@@ -4849,13 +5152,13 @@ rm -rf "$STAGE"
             icon.pack(side="left", padx=(0, 12))
 
         lbl = tk.Label(inner, text=t("file_drop_hint"), bg=SURFACE, fg=MUTED,
-                       font=("Helvetica Neue", 11), anchor="w", cursor="arrow")
+                       font=(UI_FONT, 11), anchor="w", cursor="arrow")
         lbl.pack(side="left", fill="x", expand=True)
         setattr(self, lbl_attr, lbl)
 
         kies_cv = _rounded_btn(inner, t("btn_choose"), cmd,
                                bg=SURFACE2, hv=BORDER, fg=TEXT,
-                               font=("Helvetica Neue", 10), px=10, py=4, r=8, pbg=SURFACE)
+                               font=(UI_FONT, 10), px=10, py=4, r=8, pbg=SURFACE)
         kies_cv.pack(side="right")
 
         return outer
@@ -4955,7 +5258,7 @@ rm -rf "$STAGE"
             out_paths = []
 
             for ale_p in self.ale_paths:
-                result = process_ale(ale_p, all_clips, self.log,
+                result, src_encoding = process_ale(ale_p, all_clips, self.log,
                                      write_rating=self.write_rating.get(),
                                      notes_col=(self.notes_col.get()
                                               if self.write_notes.get() else "Uit"),
@@ -4980,8 +5283,9 @@ rm -rf "$STAGE"
                 stem    = Path(ale_p).stem
                 out_dir = Path(_out_dir) if _out_dir else Path(ale_p).parent
                 out     = out_dir / f"{stem}{_out_suffix}.ALE"
-                # ALE wordt als UTF-8 weggeschreven zodat accenten/umlauten (ä ö ü enz.)
-                # intact blijven. Avid leest UTF-8-ALE's correct (UTF-8 Encoding aan bij export).
+                # ALE wordt teruggeschreven in DEZELFDE encoding als de input
+                # (UTF-8 of Mac Roman). Zo blijven accenten/umlauten (ä ö ü enz.)
+                # correct op zowel moderne als oudere Avid.
                 _UNICODE_MAP = {
                     '‘': "'", '’': "'",   # curly single quotes → '
                     '“': '"', '”': '"',   # curly double quotes → "
@@ -5001,10 +5305,26 @@ rm -rf "$STAGE"
                         if c in _UNICODE_MAP:
                             out.append(_UNICODE_MAP[c])
                             continue
-                        # Alle overige tekens (incl. accenten/umlauten) blijven intact in UTF-8
+                        # Alle overige tekens (incl. accenten/umlauten) blijven intact
                         out.append(c)
                     return ''.join(out)
-                result_bytes = _ale_safe(result).encode("utf-8")
+
+                # Optionele transliteratie van umlauten (ü→ue, ö→oe, ä→ae, ß→ss)
+                _TRANSLIT = {
+                    'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss',
+                    'Ä': 'Ae', 'Ö': 'Oe', 'Ü': 'Ue',
+                }
+                def _translit(s):
+                    return ''.join(_TRANSLIT.get(c, c) for c in s)
+
+                safe = _ale_safe(result)
+                if self.translit_umlauts.get():
+                    safe = _translit(safe)
+                try:
+                    result_bytes = safe.encode(src_encoding)
+                except UnicodeEncodeError:
+                    # Vangnet: transliteren en anders vervangen zodat de export nooit faalt
+                    result_bytes = _translit(safe).encode(src_encoding, errors="replace")
                 try:
                     out_dir.mkdir(parents=True, exist_ok=True)
                     out.write_bytes(result_bytes)
@@ -5028,17 +5348,19 @@ rm -rf "$STAGE"
                         self.root.after(_delay, _do_clear)
                     else:
                         self.root.after(_delay, lambda: self._ask_clear_dialog(_do_clear))
-                import subprocess, sys as _sys
-                folder = str(out_paths[0].parent)
-                try:
-                    if _sys.platform == "darwin":
-                        subprocess.Popen(["open", folder])
-                    elif _sys.platform.startswith("win"):
-                        subprocess.Popen(["explorer", folder])
-                    else:
-                        subprocess.Popen(["xdg-open", folder])
-                except Exception:
-                    pass
+                # Map met resultaat openen — alleen als de gebruiker dat wil
+                if self.open_folder_after.get():
+                    import subprocess, sys as _sys
+                    folder = str(out_paths[0].parent)
+                    try:
+                        if _sys.platform == "darwin":
+                            subprocess.Popen(["open", folder])
+                        elif _sys.platform.startswith("win"):
+                            subprocess.Popen(["explorer", folder])
+                        else:
+                            subprocess.Popen(["xdg-open", folder])
+                    except Exception:
+                        pass
         except Exception as e:
             self.log(f"Fout: {e}", "err")
         finally:
@@ -5055,7 +5377,7 @@ rm -rf "$STAGE"
         dlg.resizable(False, False)
         dlg.grab_set()
         tk.Label(dlg, text=t("ask_clear_msg"), bg=BG, fg=TEXT,
-                 font=("Helvetica Neue", 12), wraplength=320,
+                 font=(UI_FONT, 12), wraplength=320,
                  justify="left").pack(padx=24, pady=(22, 16))
         btn_row = tk.Frame(dlg, bg=BG)
         btn_row.pack(anchor="e", padx=24, pady=(0, 18))
@@ -5066,14 +5388,111 @@ rm -rf "$STAGE"
             on_clear()
         _rounded_btn(btn_row, t("btn_clear_no"), _keep,
                      bg=SURFACE2, hv=SURFACE, fg=TEXT,
-                     font=("Helvetica Neue", 11), px=16, py=6, r=8, pbg=BG).pack(side="left", padx=(0, 8))
+                     font=(UI_FONT, 11), px=16, py=6, r=8, pbg=BG).pack(side="left", padx=(0, 8))
         _rounded_btn(btn_row, t("btn_clear_yes"), _clear,
                      bg=AVID_B, hv="#2a6fbd", fg="white",
-                     font=("Helvetica Neue", 11, "bold"), px=16, py=6, r=8, pbg=BG).pack(side="left")
+                     font=(UI_FONT, 11, "bold"), px=16, py=6, r=8, pbg=BG).pack(side="left")
         dlg.update_idletasks()
         mw = self.root.winfo_x() + self.root.winfo_width()  // 2
         mh = self.root.winfo_y() + self.root.winfo_height() // 2
         dlg.geometry(f"+{mw - dlg.winfo_width()//2}+{mh - dlg.winfo_height()//2}")
+
+    def _apply_appearance_live(self):
+        """Pas lettertype, accentkleur en interfacegrootte direct toe (zonder herstart)."""
+        import tkinter.font as _tkfont
+
+        # Kleur-vervangkaart: oude accent-trio → nieuwe accent-trio
+        _old_trio = ACCENT_THEMES.get(getattr(self, "_prev_accent", "paars"),
+                                      ACCENT_THEMES["paars"])
+        _apply_font(self.ui_font.get())
+        _apply_accent(self.accent.get())
+        _new_trio = (AVID_B, AVID_B_H, ACCENT2)
+        color_swap = {_old_trio[i]: _new_trio[i] for i in range(3)}
+        self._prev_accent = self.accent.get()
+
+        # Schaal (direct op de fonts, per widget; onthoudt basisgrootte)
+        self._scale = max(10, min(200, int(self.ui_scale.get()))) / 100.0
+
+        _COLOR_OPTS = ('bg', 'background', 'fg', 'foreground', 'activebackground',
+                       'activeforeground', 'highlightbackground', 'highlightcolor',
+                       'selectcolor', 'troughcolor', 'insertbackground')
+
+        def _remap_font(w):
+            try:
+                f = w.cget('font')
+            except Exception:
+                return
+            if not f:
+                return
+            wid = str(w)
+            base = self._font_base.get(wid)
+            if base is None:
+                try:
+                    fo = _tkfont.Font(root=self.root, font=f)
+                    base = (abs(int(fo.cget('size'))) or 11,
+                            fo.cget('weight'), fo.cget('slant'))
+                except Exception:
+                    return
+                self._font_base[wid] = base
+            size, weight, slant = base
+            scaled = max(6, round(size * self._scale))
+            spec = [UI_FONT, scaled]
+            if weight == 'bold':
+                spec.append('bold')
+            if slant == 'italic':
+                spec.append('italic')
+            try:
+                w.config(font=tuple(spec))
+            except Exception:
+                pass
+
+        def _walk(w):
+            # Kleuren omwisselen
+            for opt in _COLOR_OPTS:
+                try:
+                    val = str(w.cget(opt))
+                except Exception:
+                    continue
+                if val in color_swap:
+                    try:
+                        w.config(**{opt: color_swap[val]})
+                    except Exception:
+                        pass
+            _remap_font(w)
+            for c in w.winfo_children():
+                _walk(c)   # ook Toplevels (Voorkeuren) — in-place, niet herbouwen
+
+        _walk(self.root)
+
+        # Combobox-stijl: font meeschalen (aqua negeert per-widget font op comboboxen)
+        try:
+            _st = ttk.Style()
+            _cb_size = max(6, round(12 * self._scale))
+            _st.configure("CB.TCombobox", selectbackground=AVID_B,
+                          font=(UI_FONT, _cb_size), padding=max(2, round(6 * self._scale)))
+            _st.map("CB.TCombobox", selectbackground=[("readonly", SURFACE2)])
+            self.root.option_add("*TCombobox*Listbox.font", f"{{{UI_FONT}}} {_cb_size}")
+        except Exception:
+            pass
+
+        # Hoofdvenster meeschalen in breedte zodat brede content niet afkapt
+        try:
+            self._win_w = int(520 * self._scale)
+            self._win_h = int(650 * self._scale)
+            cur = self.root.geometry().split("+")[0]
+            self.root.geometry(f"{self._win_w}x{max(self.root.winfo_height(), self._win_h)}")
+        except Exception:
+            pass
+
+        if getattr(self, "_draw_verwerk", None):
+            try: self._draw_verwerk()
+            except Exception: pass
+        if getattr(self, "_redraw_header", None):
+            try: self._redraw_header()
+            except Exception: pass
+        for _bd in getattr(self, "_badges", []):
+            try: _bd()
+            except Exception: pass
 
     def log(self, msg, tag="info"):
         def _do():
