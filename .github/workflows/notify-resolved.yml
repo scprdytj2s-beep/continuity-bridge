@@ -48,8 +48,8 @@ jobs:
             } catch (e) { /* geen release — laat versie leeg */ }
 
             const versieRegel = version
-              ? `<p style="margin:0 0 16px">Dit is opgelost in de nieuwste versie (<strong>v${version}</strong>). Download 'm via de gebruikelijke link en test gerust of het nu goed gaat.</p>`
-              : `<p style="margin:0 0 16px">Dit is opgelost in de nieuwste versie. Download 'm via de gebruikelijke link en test gerust of het nu goed gaat.</p>`;
+              ? `<p style="margin:0 0 16px">De fix zit in de nieuwste versie (<strong>v${version}</strong>). Download 'm via de gebruikelijke link en test gerust of het nu goed gaat.</p>`
+              : `<p style="margin:0 0 16px">De fix zit in de nieuwste versie. Download 'm via de gebruikelijke link en test gerust of het nu goed gaat.</p>`;
 
             const desc = (field('Beschrijving') || issue.title || '')
               .replace(/</g, '&lt;').replace(/>/g, '&gt;');
