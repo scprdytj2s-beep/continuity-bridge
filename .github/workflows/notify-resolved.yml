@@ -61,7 +61,7 @@ jobs:
                 </div>
                 <div style="border:1px solid #e5e5e5;border-top:none;padding:32px;border-radius:0 0 12px 12px">
                   <p style="margin:0 0 16px">Hoi ${voornaam},</p>
-                  <p style="margin:0 0 16px">Goed nieuws — jouw ${typeLabel} voor Continuity Bridge is opgelost. ${typeEmoji}</p>
+                  <p style="margin:0 0 16px">Jouw ${typeLabel} voor Continuity Bridge is als het goed is nu opgelost. ${typeEmoji}</p>
                   ${versieRegel}
                   <div style="background:#f9f9f9;border-radius:8px;padding:16px;margin:20px 0;font-size:13px;color:#444;border-left:4px solid #9B40FF">
                     <p style="margin:0"><strong>Jouw melding:</strong></p>
