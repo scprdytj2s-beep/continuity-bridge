@@ -1,0 +1,96 @@
+name: Notify reporter on resolve
+
+# Stuurt automatisch een "je melding is opgelost"-mail naar de indiener zodra
+# een feedback-issue wordt gesloten als "completed" (voltooid). De melder-mail
+# komt uit de issue-body (**E-mail:** ...), dezelfde als bij het formulier.
+
+on:
+  issues:
+    types: [closed]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    if: >
+      contains(github.event.issue.labels.*.name, 'feedback') &&
+      github.event.issue.state_reason == 'completed'
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body  = issue.body || '';
+            const field = (f) => {
+              const m = body.match(new RegExp(`\\*\\*${f}:\\*\\*\\s*(.+)`));
+              return m ? m[1].trim() : '';
+            };
+            const email = field('E-mail');
+            if (!email) { core.info('Geen e-mail in issue — overslaan.'); return; }
+
+            const key = process.env.RESEND_API_KEY;
+            if (!key) { core.setFailed('RESEND_API_KEY ontbreekt als repo-secret.'); return; }
+
+            const name     = field('Naam');
+            const voornaam = (name && name !== 'Anoniem') ? name.split(' ')[0] : 'daar';
+            const isBug    = (issue.labels || []).some(l => l.name === 'bug');
+            const typeLabel = isBug ? 'bugmelding' : 'verzoek';
+            const typeEmoji = isBug ? '🐛' : '💡';
+
+            // Nieuwste release-versie ophalen (voor de "opgelost in ..."-tekst)
+            let version = '';
+            try {
+              const rel = await github.rest.repos.getLatestRelease({
+                owner: context.repo.owner, repo: context.repo.repo,
+              });
+              version = (rel.data.tag_name || '').replace(/^v/, '');
+            } catch (e) { /* geen release — laat versie leeg */ }
+
+            const versieRegel = version
+              ? `<p style="margin:0 0 16px">Dit is opgelost in de nieuwste versie (<strong>v${version}</strong>). Download 'm via de gebruikelijke link en test gerust of het nu goed gaat.</p>`
+              : `<p style="margin:0 0 16px">Dit is opgelost in de nieuwste versie. Download 'm via de gebruikelijke link en test gerust of het nu goed gaat.</p>`;
+
+            const desc = (field('Beschrijving') || issue.title || '')
+              .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+            const html = `
+              <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+                <div style="background:#0C0618;padding:24px 32px;border-radius:12px 12px 0 0">
+                  <span style="color:#EDE8FF;font-weight:700;font-size:16px">Continuity Bridge</span>
+                </div>
+                <div style="border:1px solid #e5e5e5;border-top:none;padding:32px;border-radius:0 0 12px 12px">
+                  <p style="margin:0 0 16px">Hoi ${voornaam},</p>
+                  <p style="margin:0 0 16px">Goed nieuws — jouw ${typeLabel} voor Continuity Bridge is opgelost. ${typeEmoji}</p>
+                  ${versieRegel}
+                  <div style="background:#f9f9f9;border-radius:8px;padding:16px;margin:20px 0;font-size:13px;color:#444;border-left:4px solid #9B40FF">
+                    <p style="margin:0"><strong>Jouw melding:</strong></p>
+                    <div style="white-space:pre-wrap;margin-top:8px">${desc}</div>
+                  </div>
+                  <p style="margin:0 0 20px">
+                    <a href="https://studiomichielboesveldt.nl/cbapp/"
+                       style="display:inline-block;background:#9B40FF;color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;font-weight:600;font-size:14px">
+                      Download de nieuwste versie
+                    </a>
+                  </p>
+                  <p style="margin:0;font-size:14px;color:#666">Bedankt voor je feedback!</p>
+                  <p style="margin:0;font-size:14px;color:#666">— Michiel</p>
+                </div>
+              </div>`;
+
+            const resp = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                from: 'support@studiomichielboesveldt.nl <info@studiomichielboesveldt.nl>',
+                to:   email,
+                bcc:  'info@studiomichielboesveldt.nl',
+                subject: `✅ Opgelost: jouw ${typeLabel} voor Continuity Bridge`,
+                html,
+              }),
+            });
+            if (!resp.ok) {
+              core.setFailed('Resend-fout: ' + resp.status + ' ' + (await resp.text()));
+            } else {
+              core.info('Mail verstuurd naar ' + email);
+            }
