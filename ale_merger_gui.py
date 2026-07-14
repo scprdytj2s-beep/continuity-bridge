@@ -1368,7 +1368,7 @@ _patch_nsmenuitem_for_macos15plus()
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.3.9.1 (Beta)"
+VERSION       = "1.3.9.2 (Beta)"
 
 # ── Vertalingen ────────────────────────────────────────────────────────────────
 STRINGS: dict[str, dict[str, str]] = {
@@ -1452,6 +1452,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "btn_clear_no":            "Laat staan",
         "prefs_open_folder":       "Map openen na verwerken",
         "prefs_translit":          "Umlauten omzetten (ü→ue, ö→oe, ä→ae, ß→ss)",
+        "prefs_ale_encoding":      "ALE-codering",
+        "enc_auto":                "Auto (zoals invoer)",
+        "enc_utf8":                "UTF-8 (nieuwere Avid)",
+        "enc_macroman":            "Mac Roman (oudere Avid)",
         "prefs_ui_scale":          "Interfacegrootte",
         "prefs_ui_font":           "Lettertype",
         "prefs_accent":            "Accentkleur",
@@ -1556,10 +1560,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "faq_a3":  "Dat kan. Importeer de ALE altijd vóórdat je multiclips aanmaakt. "
                    "Avid draagt metadata niet automatisch over aan bestaande multiclips.",
         "faq_q4":  "Ik krijg een waarschuwing dat de app van een onbekende ontwikkelaar is.",
-        "faq_a4":  "Dit is een standaard macOS-beveiliging voor apps buiten de App Store. "
-                   "Je kunt dit veilig negeren: ga naar Systeeminstellingen → Privacy en "
-                   "beveiliging → klik op 'Toch openen'. "
-                   "We werken aan een Apple Developer-registratie zodat deze melding verdwijnt.",
+        "faq_a4":  "Dit is standaard macOS-beveiliging voor apps buiten de App Store. "
+                   "Klik NIET op 'Verplaats naar prullenmand'!\n\n"
+                   "Zo open je de app:\n"
+                   "1. Klik in de melding op 'Gereed' (Done)\n"
+                   "2. Open Systeeminstellingen → Privacy en beveiliging, scroll omlaag\n"
+                   "3. Daar staat nu '\"Continuity Bridge\" is geblokkeerd…' → klik 'Toch openen'\n"
+                   "4. Bevestig eenmalig met Touch ID of je wachtwoord\n\n"
+                   "Dit hoeft maar één keer, daarna onthoudt macOS het. Updates via de "
+                   "in-app updater hebben hier geen last van. We werken aan een Apple "
+                   "Developer-registratie zodat deze melding helemaal verdwijnt.",
         "faq_q5":  "Werkt Continuity Bridge offline?",
         "faq_a5":  "Ja, volledig. Na activatie heeft de app geen internetverbinding nodig. "
                    "Verwerking gebeurt lokaal op je Mac of pc.",
@@ -1682,6 +1692,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "btn_clear_no":            "Keep",
         "prefs_open_folder":       "Open folder after processing",
         "prefs_translit":          "Convert umlauts (ü→ue, ö→oe, ä→ae, ß→ss)",
+        "prefs_ale_encoding":      "ALE encoding",
+        "enc_auto":                "Auto (same as input)",
+        "enc_utf8":                "UTF-8 (newer Avid)",
+        "enc_macroman":            "Mac Roman (older Avid)",
         "prefs_ui_scale":          "Interface size",
         "prefs_ui_font":           "Font",
         "prefs_accent":            "Accent colour",
@@ -1787,9 +1801,15 @@ STRINGS: dict[str, dict[str, str]] = {
                    "Avid does not automatically transfer metadata to existing multiclips.",
         "faq_q4":  "I get a warning that the app is from an unidentified developer.",
         "faq_a4":  "This is standard macOS security for apps outside the App Store. "
-                   "You can safely dismiss it: go to System Settings → Privacy & "
-                   "Security → click 'Open Anyway'. "
-                   "We are working on an Apple Developer registration to remove this warning.",
+                   "Do NOT click 'Move to Trash'!\n\n"
+                   "How to open the app:\n"
+                   "1. Click 'Done' in the dialog\n"
+                   "2. Open System Settings → Privacy & Security, scroll down\n"
+                   "3. You'll see '\"Continuity Bridge\" was blocked…' → click 'Open Anyway'\n"
+                   "4. Confirm once with Touch ID or your password\n\n"
+                   "This is only needed once; macOS remembers it afterwards. Updates via "
+                   "the in-app updater are not affected. We are working on an Apple "
+                   "Developer registration to remove this warning entirely.",
         "faq_q5":  "Does Continuity Bridge work offline?",
         "faq_a5":  "Yes, fully. After activation the app needs no internet connection. "
                    "Processing happens locally on your Mac or PC.",
@@ -1912,6 +1932,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "btn_clear_no":            "Behalten",
         "prefs_open_folder":       "Ordner nach Verarbeitung öffnen",
         "prefs_translit":          "Umlaute umwandeln (ü→ue, ö→oe, ä→ae, ß→ss)",
+        "prefs_ale_encoding":      "ALE-Kodierung",
+        "enc_auto":                "Auto (wie Eingabe)",
+        "enc_utf8":                "UTF-8 (neueres Avid)",
+        "enc_macroman":            "Mac Roman (älteres Avid)",
         "prefs_ui_scale":          "Oberflächengröße",
         "prefs_ui_font":           "Schriftart",
         "prefs_accent":            "Akzentfarbe",
@@ -2017,9 +2041,15 @@ STRINGS: dict[str, dict[str, str]] = {
                    "Avid überträgt Metadaten nicht automatisch auf vorhandene Multiclips.",
         "faq_q4":  "Ich erhalte eine Warnung, dass die App von einem unbekannten Entwickler stammt.",
         "faq_a4":  "Dies ist die Standard-macOS-Sicherheitsfunktion für Apps außerhalb des App Stores. "
-                   "Du kannst das sicher ignorieren: gehe zu Systemeinstellungen → Datenschutz & "
-                   "Sicherheit → klicke auf 'Trotzdem öffnen'. "
-                   "Wir arbeiten an einer Apple-Developer-Registrierung, damit diese Meldung verschwindet.",
+                   "Klicke NICHT auf 'In den Papierkorb legen'!\n\n"
+                   "So öffnest du die App:\n"
+                   "1. Klicke im Dialog auf 'Fertig' (Done)\n"
+                   "2. Öffne Systemeinstellungen → Datenschutz & Sicherheit, scrolle nach unten\n"
+                   "3. Dort steht '\"Continuity Bridge\" wurde blockiert…' → klicke 'Dennoch öffnen'\n"
+                   "4. Bestätige einmalig mit Touch ID oder deinem Passwort\n\n"
+                   "Das ist nur einmal nötig; danach merkt sich macOS die Entscheidung. "
+                   "Updates über den In-App-Updater sind nicht betroffen. Wir arbeiten an "
+                   "einer Apple-Developer-Registrierung, damit diese Meldung ganz verschwindet.",
         "faq_q5":  "Funktioniert Continuity Bridge offline?",
         "faq_a5":  "Ja, vollständig. Nach der Aktivierung benötigt die App keine Internetverbindung. "
                    "Die Verarbeitung erfolgt lokal auf deinem Mac oder PC.",
@@ -2487,6 +2517,7 @@ _PREFS_DEFAULTS = {
     "clear_delay":        5,          # seconden, in stappen van 5
     "open_folder_after":  True,       # map met resultaat openen na verwerken
     "translit_umlauts":   False,      # ü→ue, ö→oe, ä→ae, ß→ss bij export
+    "ale_encoding":       "auto",     # auto (zoals invoer) | utf-8 | mac_roman
     "ui_scale":           100,        # interfacegrootte in % (90–150)
     "ui_font":            "helvetica", # helvetica | systeem | leesbaar
     "accent":            "paars",     # paars | blauw | groen | roze | oranje
@@ -2659,6 +2690,7 @@ class App:
         self.clear_delay        = tk.IntVar(value=_p.get("clear_delay", 5))
         self.open_folder_after  = tk.BooleanVar(value=_p.get("open_folder_after", True))
         self.translit_umlauts   = tk.BooleanVar(value=_p.get("translit_umlauts", False))
+        self.ale_encoding       = tk.StringVar(value=_p.get("ale_encoding", "auto"))
         self.ui_scale           = tk.IntVar(value=self._ui_scale_pct)
         self.ui_font            = tk.StringVar(value=_p.get("ui_font", "helvetica"))
         self.accent             = tk.StringVar(value=_p.get("accent", "paars"))
@@ -2696,6 +2728,7 @@ class App:
                 "clear_delay":        self.clear_delay.get(),
                 "open_folder_after":  self.open_folder_after.get(),
                 "translit_umlauts":   self.translit_umlauts.get(),
+                "ale_encoding":       self.ale_encoding.get(),
                 "ui_scale":           self.ui_scale.get(),
                 "ui_font":            self.ui_font.get(),
                 "accent":             self.accent.get(),
@@ -2734,6 +2767,7 @@ class App:
         self.clear_delay.trace_add("write", _on_pref_change)
         self.open_folder_after.trace_add("write", _on_pref_change)
         self.translit_umlauts.trace_add("write", _on_pref_change)
+        self.ale_encoding.trace_add("write", _on_pref_change)
         self.ui_scale.trace_add("write", _on_pref_change)
         self.ui_font.trace_add("write", _on_pref_change)
         self.accent.trace_add("write", _on_pref_change)
@@ -2833,6 +2867,30 @@ class App:
             def _fallback():
                 _wb.open(RELEASES_PAGE); dlg.destroy()
 
+            # Gedeelde status: de downloadthread schrijft hier ALLEEN platte
+            # waarden in; de hoofdthread pollt en werkt de UI bij. (Tkinter
+            # aanroepen vanuit een tweede thread kan deadlocken → beachball.)
+            _ustate = {"pct": 0.0, "kb": 0, "phase": "idle",
+                       "done": None, "error": None, "win_done": False}
+
+            def _poll():
+                try:
+                    if _ustate["error"] is not None:
+                        _on_error(_ustate["error"]); return
+                    if _ustate["win_done"]:
+                        _finish_win(); return
+                    if _ustate["done"] is not None:
+                        _finish_mac(*_ustate["done"]); return
+                    prog.config(value=_ustate["pct"])
+                    if _ustate["phase"] == "download":
+                        status_lbl.config(text=t("update_status_download",
+                                                 kb=_ustate["kb"]))
+                    elif _ustate["phase"] == "install":
+                        status_lbl.config(text=t("update_status_install"))
+                    dlg.after(120, _poll)
+                except tk.TclError:
+                    pass   # dialoog gesloten
+
             def _start():
                 if not dl_url:
                     _fallback(); return
@@ -2841,6 +2899,7 @@ class App:
                 later_cv.config(cursor="arrow")
                 later_cv.unbind("<Button-1>")
                 threading.Thread(target=_download_and_install, daemon=True).start()
+                dlg.after(120, _poll)
 
             def _ulog(msg):
                 try:
@@ -2865,8 +2924,11 @@ class App:
                         except Exception:
                             _ctx2 = _ssl2._create_unverified_context()
                     # ── Download ──────────────────────────────────────────────
+                    # Geen tkinter-aanroepen vanuit deze thread! Alleen _ustate
+                    # bijwerken; de hoofdthread pollt en tekent.
                     ext = '.exe' if _sys3.platform == 'win32' else '.dmg'
                     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+                    _ustate["phase"] = "download"
                     with _ur2.urlopen(dl_url, timeout=120, context=_ctx2) as resp:
                         total = int(resp.headers.get('Content-Length', 0))
                         done  = 0
@@ -2876,20 +2938,18 @@ class App:
                                 break
                             tmp.write(chunk)
                             done += len(chunk)
+                            _ustate["kb"] = done // 1024
                             if total:
-                                dlg.after(0, lambda p=done/total*100: prog.config(value=p))
-                            dlg.after(0, lambda d=done:
-                                status_lbl.config(text=t("update_status_download", kb=d//1024)))
+                                _ustate["pct"] = done / total * 100
                     tmp.close()
                     tmp_path = tmp.name
                     _ulog(f"download klaar: {done} bytes -> {tmp_path}")
-
-                    dlg.after(0, lambda: status_lbl.config(text=t("update_status_install")))
+                    _ustate["phase"] = "install"
 
                     if _sys3.platform == 'win32':
                         import subprocess as _sp3
                         _sp3.Popen([tmp_path], shell=True)
-                        dlg.after(0, _finish_win)
+                        _ustate["win_done"] = True
                     else:
                         import subprocess as _sp3, glob, shutil
                         # Mount DMG
@@ -2926,12 +2986,11 @@ class App:
                                  capture_output=True)
                         os.unlink(tmp_path)
                         _ulog(f"gestaged naar {staged_app}; doelpad {install_path}")
-                        dlg.after(0, lambda ip=install_path, sa=staged_app, sd=stage_dir:
-                                  _finish_mac(ip, sa, sd))
+                        _ustate["done"] = (install_path, staged_app, stage_dir)
 
                 except Exception as exc:
                     _ulog(f"FOUT tijdens download/install: {exc!r}")
-                    dlg.after(0, lambda e=str(exc): _on_error(e))
+                    _ustate["error"] = str(exc)
 
             def _finish_mac(install_path, staged_app, stage_dir):
                 prog.config(value=100)
@@ -4262,6 +4321,28 @@ rm -rf "$STAGE"
         tk.Label(r_translit, text=t("prefs_translit"), bg=BG, fg=MUTED,
                  font=(UI_FONT, 11)).pack(side="left", padx=(4, 0))
 
+        # ALE-codering: Auto (zoals invoer) / UTF-8 / Mac Roman.
+        # Nodig omdat een verse dag-export vaak puur ASCII is: dan valt de
+        # invoer-encoding niet te detecteren, terwijl de PDF-notes wél
+        # umlauten kunnen bevatten. Oudere Avid = Mac Roman.
+        r_enc = tk.Frame(_out, bg=BG)
+        r_enc.pack(fill="x", pady=3)
+        tk.Label(r_enc, text=t("prefs_ale_encoding"), bg=BG, fg=MUTED,
+                 font=(UI_FONT, 11), width=18, anchor="w").pack(side="left")
+        _ENC_OPTS  = [t("enc_auto"), t("enc_utf8"), t("enc_macroman")]
+        _ENC_CODES = {t("enc_auto"): "auto", t("enc_utf8"): "utf-8",
+                      t("enc_macroman"): "mac_roman"}
+        _ENC_LABELS = {v: k for k, v in _ENC_CODES.items()}
+        _enc_disp = tk.StringVar(value=_ENC_LABELS.get(self.ale_encoding.get(),
+                                                       t("enc_auto")))
+        enc_cb = ttk.Combobox(r_enc, textvariable=_enc_disp,
+                              values=_ENC_OPTS, state="readonly", width=22,
+                              style="CB.TCombobox", font=(UI_FONT, 11))
+        enc_cb.pack(side="left")
+        def _on_enc(e=None):
+            self.ale_encoding.set(_ENC_CODES.get(_enc_disp.get(), "auto"))
+        enc_cb.bind("<<ComboboxSelected>>", _on_enc)
+
         # Wissen na verwerken: modus + vertraging
         r_clear = tk.Frame(_out, bg=BG)
         r_clear.pack(fill="x", pady=3)
@@ -5344,11 +5425,18 @@ rm -rf "$STAGE"
                 safe = _ale_safe(result)
                 if self.translit_umlauts.get():
                     safe = _translit(safe)
+                # Uitvoer-encoding: voorkeur wint; "auto" = zelfde als invoer.
+                # Let op: bij pure-ASCII invoer is detectie onmogelijk — dan is
+                # de voorkeursinstelling de enige betrouwbare keuze.
+                _enc_pref = self.ale_encoding.get()
+                out_encoding = src_encoding if _enc_pref in ("auto", "", None) else _enc_pref
+                self.log(f"ALE-codering: {out_encoding}"
+                         + (" (auto)" if _enc_pref in ("auto", "", None) else ""), "info")
                 try:
-                    result_bytes = safe.encode(src_encoding)
+                    result_bytes = safe.encode(out_encoding)
                 except UnicodeEncodeError:
                     # Vangnet: transliteren en anders vervangen zodat de export nooit faalt
-                    result_bytes = _translit(safe).encode(src_encoding, errors="replace")
+                    result_bytes = _translit(safe).encode(out_encoding, errors="replace")
                 try:
                     out_dir.mkdir(parents=True, exist_ok=True)
                     out.write_bytes(result_bytes)
