@@ -2952,9 +2952,11 @@ class App:
                         _ustate["win_done"] = True
                     else:
                         import subprocess as _sp3, glob, shutil
-                        # Mount DMG
+                        # Mount DMG. LET OP: géén -quiet — die onderdrukt óók de
+                        # mount-tabel in stdout, waardoor het mount-pad nooit te
+                        # parsen valt ("DMG mounten mislukt").
                         r = _sp3.run(
-                            ['hdiutil', 'attach', '-quiet', '-nobrowse',
+                            ['hdiutil', 'attach', '-nobrowse',
                              '-noverify', tmp_path],
                             capture_output=True, text=True)
                         mount_pt = None
@@ -3004,7 +3006,7 @@ class App:
                                    px=20, py=7, r=10, pbg=BG)
                 rst.pack(side="left", padx=(0, 10))
                 lat = _rounded_btn(btn_frame, t("update_btn_later"), dlg.destroy,
-                                   bg=SURFACE2, hv=BORDER2, fg=MUTED,
+                                   bg=SURFACE2, hv=BORDER, fg=MUTED,
                                    font=(UI_FONT, 11),
                                    px=16, py=7, r=10, pbg=BG)
                 lat.pack(side="left")
@@ -3060,7 +3062,7 @@ rm -rf "$STAGE"
                                    px=20, py=7, r=10, pbg=BG)
             upd_cv.pack(side="left", padx=(0, 10))
             later_cv = _rounded_btn(btn_frame, t("update_btn_later"), dlg.destroy,
-                                    bg=SURFACE2, hv=BORDER2, fg=MUTED,
+                                    bg=SURFACE2, hv=BORDER, fg=MUTED,
                                     font=(UI_FONT, 11),
                                     px=16, py=7, r=10, pbg=BG)
             later_cv.pack(side="left")
@@ -3138,7 +3140,7 @@ rm -rf "$STAGE"
                     var.set(t("field_camera_roll"))
                 col_vars.append(var)
                 om = tk.OptionMenu(col_f, var, *FIELD_OPTIONS)
-                om.config(bg=SURFACE2, fg=TEXT, activebackground=BORDER2,
+                om.config(bg=SURFACE2, fg=TEXT, activebackground=BORDER,
                           font=(UI_FONT, 9), width=12)
                 om["menu"].config(bg=SURFACE2, fg=TEXT)
                 om.pack(anchor="w", pady=2)
@@ -3202,7 +3204,7 @@ rm -rf "$STAGE"
                          font=(UI_FONT, 11, "bold"),
                          px=20, py=7, r=10, pbg=BG).pack(side="left", padx=(0, 10))
             _rounded_btn(btn_row, t("btn_skip"), _skip,
-                         bg=SURFACE2, hv=BORDER2, fg=MUTED,
+                         bg=SURFACE2, hv=BORDER, fg=MUTED,
                          font=(UI_FONT, 11),
                          px=16, py=7, r=10, pbg=BG).pack(side="left")
 
