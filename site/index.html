@@ -1262,7 +1262,7 @@
   <!-- HERO -->
   <section class="hero">
     <div class="hero-left">
-      <div class="hero-tag fade-up"><span class="dot"></span> <span id="hero-version">v1.3.9.1</span></div>
+      <div class="hero-tag fade-up"><span class="dot"></span> <span id="hero-version">v1.3.9.2</span></div>
       <h1 class="fade-up" data-i18n-html="hero_h1">Van continuïteits&shy;rapport naar je <em>Avid Bin.</em></h1>
       <p class="hero-sub fade-up" data-i18n="hero_sub">
         Lees je PDF-continuïteitsrapporten uit en schrijf alle notities en ratings direct naar je Avid bin.
@@ -1281,10 +1281,10 @@
       <div class="version-line fade-up">
         <a class="version-badge" href="changelog">
           <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/><path d="M6 3.5v3l2 1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-          <span id="badge-version">v1.3.9.1</span>
+          <span id="badge-version">v1.3.9.2</span>
         </a>
         <span class="version-sep">·</span>
-        <span class="version-meta" id="hero-date">6 juli 2026</span>
+        <span class="version-meta" id="hero-date">15 juli 2026</span>
         <span class="version-sep">·</span>
         <a class="version-link" href="changelog" data-i18n="hero_whats_new">
           Wat is er nieuw? →
@@ -1412,19 +1412,23 @@
         <div class="faq-item">
           <button class="faq-q" aria-expanded="false" data-i18n="faq1_q">Ik krijg een waarschuwing dat de app van een onbekende ontwikkelaar is — wat nu?</button>
           <div class="faq-a" style="flex-direction:column;gap:16px;">
-            <p data-i18n="faq1_a">Dit is een standaard macOS-beveiliging voor apps buiten de App Store. Je kunt dit veilig negeren — Continuity Bridge bevat geen malware. We werken aan een Apple Developer-certificaat zodat deze melding verdwijnt.</p>
+            <p data-i18n-html="faq1_a">Dit is een standaard macOS-beveiliging voor apps buiten de App Store. Je kunt dit veilig negeren — Continuity Bridge bevat geen malware. Krijg je de melding dat de app niet geopend kan worden? <strong>Klik NIET op "Verplaats naar prullenmand".</strong> Doorloop in plaats daarvan deze stappen:</p>
             <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:rgba(155,64,255,0.07);border:1px solid rgba(155,64,255,0.15);border-radius:10px;">
-              <p data-i18n-html="faq1_s1"><strong style="color:var(--accent2)">Stap 1</strong> — Je ziet dit venster als je de app voor het eerst opent. Klik op <strong>Klaar</strong>.</p>
+              <p data-i18n-html="faq1_s1"><strong style="color:var(--accent2)">Stap 1</strong> — Klik in de melding op <strong>Gereed</strong> (Done).</p>
               <img src="security-step0.png" alt="Continuity Bridge niet geopend" style="width:100%;max-width:280px;border-radius:8px;opacity:0.92;" />
             </div>
             <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:rgba(155,64,255,0.07);border:1px solid rgba(155,64,255,0.15);border-radius:10px;">
-              <p data-i18n-html="faq1_s2"><strong style="color:var(--accent2)">Stap 2</strong> — Ga naar <strong>Systeeminstellingen → Privacy en beveiliging</strong> en klik op <strong>Toch openen</strong>.</p>
+              <p data-i18n-html="faq1_s2"><strong style="color:var(--accent2)">Stap 2</strong> — Open <strong>Systeeminstellingen → Privacy en beveiliging</strong> en scroll naar beneden.</p>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:rgba(155,64,255,0.07);border:1px solid rgba(155,64,255,0.15);border-radius:10px;">
+              <p data-i18n-html="faq1_s3"><strong style="color:var(--accent2)">Stap 3</strong> — Bij <strong>"Continuity Bridge" is geblokkeerd…</strong> klik je op <strong>Toch openen</strong>.</p>
               <img src="security-step1.png" alt="Privacy en beveiliging – Toch openen" style="width:100%;max-width:480px;border-radius:8px;opacity:0.92;" />
             </div>
             <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:rgba(155,64,255,0.07);border:1px solid rgba(155,64,255,0.15);border-radius:10px;">
-              <p data-i18n-html="faq1_s3"><strong style="color:var(--accent2)">Stap 3</strong> — Bevestig door opnieuw op <strong>Toch openen</strong> te klikken.</p>
+              <p data-i18n-html="faq1_s4"><strong style="color:var(--accent2)">Stap 4</strong> — Bevestig eenmalig met <strong>Touch ID</strong> of je wachtwoord.</p>
               <img src="security-step2.png" alt="Bevestig openen" style="width:100%;max-width:280px;border-radius:8px;opacity:0.92;" />
             </div>
+            <p data-i18n="faq1_note" style="font-size:14px;color:var(--muted);">Dit hoeft maar één keer. Updates via de in-app updater hebben hier geen last van.</p>
           </div>
         </div>
 
