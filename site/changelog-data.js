@@ -9,11 +9,26 @@ const RELEASES = [
     date: { nl: '15 juli 2026', en: '15 July 2026', de: '15. Juli 2026' },
     latest: true,
     title: {
-      nl: 'ALE-codering & herbouwde updater',
-      en: 'ALE encoding & rebuilt updater',
-      de: 'ALE-Codierung & neu gebauter Updater',
+      nl: 'Updater gerepareerd & ALE-codering',
+      en: 'Updater fixed & ALE encoding',
+      de: 'Updater repariert & ALE-Codierung',
     },
     groups: [
+      {
+        kind: 'fix',
+        items: [
+          {
+            nl: '<strong>In-app updater gerepareerd</strong> — de "Update &amp; Herstart"-knop die bleef hangen (draaiend balletje, lege voortgangsbalk) is definitief opgelost. Let op: wie op een oudere versie zit moet deze update éénmalig nog handmatig downloaden; vanaf v1.3.9.2 werkt updaten voortaan direct vanuit de app.',
+            en: '<strong>In-app updater fixed</strong> — the "Update &amp; Restart" button that hung (spinning wheel, empty progress bar) is now permanently resolved. Note: if you\'re on an older version you need to download this update manually once; from v1.3.9.2 onward updating works directly from the app.',
+            de: '<strong>In-App-Updater repariert</strong> — die "Aktualisieren &amp; Neustarten"-Schaltfläche, die hängen blieb (drehendes Rädchen, leerer Fortschrittsbalken), ist jetzt endgültig behoben. Hinweis: Wer eine ältere Version nutzt, muss dieses Update einmalig manuell herunterladen; ab v1.3.9.2 funktioniert das Aktualisieren direkt aus der App.',
+          },
+          {
+            nl: 'FAQ bijgewerkt met de juiste <strong>macOS Sequoia</strong>-instructies voor het openen van de app.',
+            en: 'FAQ updated with the correct <strong>macOS Sequoia</strong> instructions for opening the app.',
+            de: 'FAQ mit den richtigen <strong>macOS-Sequoia</strong>-Anweisungen zum Öffnen der App aktualisiert.',
+          },
+        ],
+      },
       {
         kind: 'new',
         items: [
@@ -21,21 +36,6 @@ const RELEASES = [
             nl: '<strong>Nieuwe instelling "ALE-codering"</strong> (Auto / UTF-8 / Mac Roman) — lost het umlaut-probleem definitief op. Werk je met een oudere Avid (zonder UTF-8-optie bij ALE-export)? Zet \'m dan op Mac Roman.',
             en: '<strong>New "ALE encoding" setting</strong> (Auto / UTF-8 / Mac Roman) — permanently solves the umlaut issue. Using an older Avid (without a UTF-8 option on ALE export)? Set it to Mac Roman.',
             de: '<strong>Neue Einstellung "ALE-Codierung"</strong> (Auto / UTF-8 / Mac Roman) — behebt das Umlaut-Problem endgültig. Nutzt du ein älteres Avid (ohne UTF-8-Option beim ALE-Export)? Dann stelle sie auf Mac Roman.',
-          },
-        ],
-      },
-      {
-        kind: 'fix',
-        items: [
-          {
-            nl: '<strong>In-app updater herbouwd</strong> — de update die bleef hangen met een lege voortgangsbalk is verholpen.',
-            en: '<strong>In-app updater rebuilt</strong> — the update that hung with an empty progress bar is fixed.',
-            de: '<strong>In-App-Updater neu gebaut</strong> — das Update, das mit leerem Fortschrittsbalken hängen blieb, ist behoben.',
-          },
-          {
-            nl: 'FAQ bijgewerkt met de juiste <strong>macOS Sequoia</strong>-instructies voor het openen van de app.',
-            en: 'FAQ updated with the correct <strong>macOS Sequoia</strong> instructions for opening the app.',
-            de: 'FAQ mit den richtigen <strong>macOS-Sequoia</strong>-Anweisungen zum Öffnen der App aktualisiert.',
           },
         ],
       },
