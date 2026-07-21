@@ -1,5 +1,6 @@
 build/
 dist/
+.venv*/
 *.dmg
 *.exe
 __pycache__/
