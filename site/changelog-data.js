@@ -5,9 +5,86 @@
 
 const RELEASES = [
   {
+    version: 'v1.4.0',
+    date: { nl: '24 juli 2026', en: '24 July 2026', de: '24. Juli 2026' },
+    latest: true,
+    title: {
+      nl: '.avb-bin direct inslepen & duidelijkere PU/AFG',
+      en: 'Direct .avb bin drop & clearer PU/AFG',
+      de: 'Direktes .avb-Bin-Ziehen & klarere PU/AFG',
+    },
+    groups: [
+      {
+        kind: 'new',
+        items: [
+          {
+            nl: '<strong>Avid .avb-bin direct inslepen</strong> — naast een ALE-export kan je nu ook meteen het .avb-bin bestand zelf gebruiken',
+            en: '<strong>Drag in an Avid .avb bin directly</strong> — besides an ALE export you can now also use the .avb bin file itself',
+            de: '<strong>Avid-.avb-Bin direkt hineinziehen</strong> — neben einem ALE-Export kannst du jetzt auch direkt die .avb-Bin-Datei verwenden',
+          },
+          {
+            nl: '<strong>Keuzedialoog bij dubbelzinnige takes</strong> — bij twijfelachtige scene/slate-matches verschijnt nu een blokkerend venster (voorheen alleen bij .avb, nu ook bij ALE), met een knop om direct de betreffende PDF-pagina te openen',
+            en: '<strong>Choice dialog for ambiguous takes</strong> — a blocking window now appears for uncertain scene/slate matches (previously only for .avb, now also for ALE), with a button to open the relevant PDF page directly',
+            de: '<strong>Auswahldialog bei mehrdeutigen Takes</strong> — bei unsicheren Szenen/Slate-Treffern erscheint jetzt ein blockierendes Fenster (bisher nur bei .avb, jetzt auch bei ALE), mit einer Schaltfläche zum direkten Öffnen der betreffenden PDF-Seite',
+          },
+          {
+            nl: '<strong>AFG in eigen kolom</strong> wegschrijven — analoog aan de bestaande PU-optie',
+            en: 'Write <strong>AFG to its own column</strong> — analogous to the existing PU option',
+            de: '<strong>AFG in eigene Spalte</strong> schreiben — analog zur bestehenden PU-Option',
+          },
+          {
+            nl: '<strong>"Naam" als doelkolom</strong> voor PU/AFG — de markering komt dan direct achter de takenaam, bijv. <em>01-46_064-05 (AFG)</em>',
+            en: '<strong>"Name" as target column</strong> for PU/AFG — the marker is then appended directly after the take name, e.g. <em>01-46_064-05 (AFG)</em>',
+            de: '<strong>"Name" als Zielspalte</strong> für PU/AFG — die Markierung wird dann direkt an den Take-Namen angehängt, z. B. <em>01-46_064-05 (AFG)</em>',
+          },
+          {
+            nl: '<strong>Uitleg-bubbels (hover)</strong> bij de PU/AFG-instellingen in Voorkeuren — inclusief duidelijke uitleg dat "Auto" dezelfde kolom gebruikt als hierboven gekozen voor Notes',
+            en: '<strong>Hover tooltips</strong> for the PU/AFG settings in Preferences — including a clear explanation that "Auto" uses the same column chosen for Notes above',
+            de: '<strong>Hover-Tooltips</strong> bei den PU/AFG-Einstellungen in den Einstellungen — inklusive klarer Erklärung, dass "Auto" dieselbe Spalte wie oben bei Notizen verwendet',
+          },
+          {
+            nl: '<strong>Strakker uiterlijk</strong>, iets meer richting Avid Link — neutralere grijstinten, vlakkere knoppen en ronde badges',
+            en: '<strong>Tighter look</strong>, closer to Avid Link — more neutral gray tones, flatter buttons and round badges',
+            de: '<strong>Schlankeres Erscheinungsbild</strong>, näher an Avid Link — neutralere Grautöne, flachere Schaltflächen und runde Badges',
+          },
+        ],
+      },
+      {
+        kind: 'fix',
+        items: [
+          {
+            nl: 'TDDOS-rapporten: de <strong>AF-kolom</strong> (afgebroken take) werd nooit gelezen — wordt nu correct herkend',
+            en: 'TDDOS reports: the <strong>AF column</strong> (aborted take) was never read — now recognized correctly',
+            de: 'TDDOS-Berichte: die <strong>AF-Spalte</strong> (abgebrochener Take) wurde nie gelesen — wird jetzt korrekt erkannt',
+          },
+          {
+            nl: 'TDDOS-rapporten: een <strong>underscore</strong> tussen scene en slate (bijv. <em>02-34_048-03</em>) werd niet herkend — werkt nu naast het streepje',
+            en: 'TDDOS reports: an <strong>underscore</strong> between scene and slate (e.g. <em>02-34_048-03</em>) was not recognized — now works alongside the hyphen',
+            de: 'TDDOS-Berichte: ein <strong>Unterstrich</strong> zwischen Szene und Slate (z. B. <em>02-34_048-03</em>) wurde nicht erkannt — funktioniert jetzt neben dem Bindestrich',
+          },
+          {
+            nl: 'TDDOS-rapporten: notities na slate 16 werden overgeslagen — opgelost',
+            en: 'TDDOS reports: notes after slate 16 were skipped — fixed',
+            de: 'TDDOS-Berichte: Notizen nach Slate 16 wurden übersprungen — behoben',
+          },
+          {
+            nl: '<strong>Kolom-kiezer</strong>: op Annuleren klikken zette per ongeluk een placeholder-kolom ("Kies kolom...") in de export — opgelost',
+            en: '<strong>Column picker</strong>: clicking Cancel accidentally left a placeholder column ("Choose column...") in the export — fixed',
+            de: '<strong>Spaltenauswahl</strong>: Klick auf Abbrechen hinterließ versehentlich eine Platzhalter-Spalte ("Spalte wählen...") im Export — behoben',
+          },
+          {
+            nl: 'Diverse crashfixes bij opstarten (o.a. zwart venster) en in de layout-mapper voor onherkende PDF-formaten',
+            en: 'Various startup crash fixes (including a black window) and in the layout mapper for unrecognized PDF formats',
+            de: 'Verschiedene Absturz-Fixes beim Start (u. a. schwarzes Fenster) und im Layout-Mapper für unerkannte PDF-Formate',
+          },
+        ],
+      },
+    ],
+  },
+
+  {
     version: 'v1.3.9.2',
     date: { nl: '15 juli 2026', en: '15 July 2026', de: '15. Juli 2026' },
-    latest: true,
     title: {
       nl: 'Updater gerepareerd & ALE-codering',
       en: 'Updater fixed & ALE encoding',
