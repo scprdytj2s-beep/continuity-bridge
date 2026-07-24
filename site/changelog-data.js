@@ -53,19 +53,19 @@ const RELEASES = [
         kind: 'fix',
         items: [
           {
-            nl: 'TDDOS-rapporten: de <strong>AF-kolom</strong> (afgebroken take) werd nooit gelezen — wordt nu correct herkend',
-            en: 'TDDOS reports: the <strong>AF column</strong> (aborted take) was never read — now recognized correctly',
-            de: 'TDDOS-Berichte: die <strong>AF-Spalte</strong> (abgebrochener Take) wurde nie gelesen — wird jetzt korrekt erkannt',
+            nl: 'Continuïteitsrapporten: de <strong>AF-kolom</strong> (afgebroken take) werd nooit gelezen — wordt nu correct herkend',
+            en: 'Continuity reports: the <strong>AF column</strong> (aborted take) was never read — now recognized correctly',
+            de: 'Continuity-Berichte: die <strong>AF-Spalte</strong> (abgebrochener Take) wurde nie gelesen — wird jetzt korrekt erkannt',
           },
           {
-            nl: 'TDDOS-rapporten: een <strong>underscore</strong> tussen scene en slate (bijv. <em>02-34_048-03</em>) werd niet herkend — werkt nu naast het streepje',
-            en: 'TDDOS reports: an <strong>underscore</strong> between scene and slate (e.g. <em>02-34_048-03</em>) was not recognized — now works alongside the hyphen',
-            de: 'TDDOS-Berichte: ein <strong>Unterstrich</strong> zwischen Szene und Slate (z. B. <em>02-34_048-03</em>) wurde nicht erkannt — funktioniert jetzt neben dem Bindestrich',
+            nl: 'Continuïteitsrapporten: een <strong>underscore</strong> tussen scene en slate (bijv. <em>02-34_048-03</em>) werd niet herkend — werkt nu naast het streepje',
+            en: 'Continuity reports: an <strong>underscore</strong> between scene and slate (e.g. <em>02-34_048-03</em>) was not recognized — now works alongside the hyphen',
+            de: 'Continuity-Berichte: ein <strong>Unterstrich</strong> zwischen Szene und Slate (z. B. <em>02-34_048-03</em>) wurde nicht erkannt — funktioniert jetzt neben dem Bindestrich',
           },
           {
-            nl: 'TDDOS-rapporten: notities na slate 16 werden overgeslagen — opgelost',
-            en: 'TDDOS reports: notes after slate 16 were skipped — fixed',
-            de: 'TDDOS-Berichte: Notizen nach Slate 16 wurden übersprungen — behoben',
+            nl: 'Continuïteitsrapporten: notities na slate 16 werden overgeslagen — opgelost',
+            en: 'Continuity reports: notes after slate 16 were skipped — fixed',
+            de: 'Continuity-Berichte: Notizen nach Slate 16 wurden übersprungen — behoben',
           },
           {
             nl: '<strong>Kolom-kiezer</strong>: op Annuleren klikken zette per ongeluk een placeholder-kolom ("Kies kolom...") in de export — opgelost',
@@ -440,9 +440,9 @@ const RELEASES = [
             de: 'SSL-Zertifikatfehler bei der Update-Prüfung auf <strong>Intel-Macs</strong> behoben',
           },
           {
-            nl: 'Rapporten in <strong>TDDOS- en D&N-formaat</strong> worden nu correct herkend',
-            en: 'Reports in <strong>TDDOS and D&N format</strong> are now recognized correctly',
-            de: 'Berichte im <strong>TDDOS- und D&N-Format</strong> werden jetzt korrekt erkannt',
+            nl: 'Extra continuïteitsrapport-formaten (o.a. <strong>D&N</strong>) worden nu correct herkend',
+            en: 'Additional continuity report formats (including <strong>D&N</strong>) are now recognized correctly',
+            de: 'Zusätzliche Continuity-Berichtsformate (u. a. <strong>D&N</strong>) werden jetzt korrekt erkannt',
           },
           {
             nl: 'Kolomnamen zijn niet meer hoofdlettergevoelig — <strong>Notes</strong> en <strong>notes</strong> worden nu als hetzelfde herkend',
