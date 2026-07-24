@@ -660,7 +660,20 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                                 # tussen PDF-notatie en ALE-naamgeving)
                                 key = f"{int(slate_nr):03d}-{int(take_str):02d}"
                             except ValueError:
+                                # Sub-slate zoals "23-2" (herslag/nieuwe setup binnen
+                                # hetzelfde slatenummer) kan niet als kaal getal
+                                # gematcht worden — data zou anders stilzwijgend
+                                # verloren gaan. Meld dit expliciet i.p.v. te negeren.
+                                log(f"Slate '{slate_nr}' (scene {scene}, take {take_str}) "
+                                    f"kon niet als slatenummer worden herkend — genegeerd. "
+                                    f"Controleer deze take handmatig.", "warn")
                                 continue
+
+                            if key in clips and clips[key].get("scene") != scene:
+                                log(f"Let op: slate {slate_nr}-{take_str} komt zowel voor bij "
+                                    f"scene {clips[key].get('scene')} als scene {scene} in de PDF — "
+                                    f"alleen de eerste is meegenomen. Controleer handmatig welke "
+                                    f"clip(s) dit betreft.", "warn")
 
                             if key not in clips:
                                 clips[key] = {
@@ -1280,6 +1293,7 @@ def process_avb(avb_path, out_path, clip_data, log, write_rating=True, write_not
     import avb
     matched = 0
     missing_cols = set()
+    key_scenes = {}  # key → {scene: [clipnamen]} — voor dubbelzinnigheid-detectie
     with avb.open(str(avb_path)) as f:
         for mob in f.content.mobs:
             u = mob.attributes.get('_USER')
@@ -1297,6 +1311,8 @@ def process_avb(avb_path, out_path, clip_data, log, write_rating=True, write_not
             if not info:
                 continue
             matched += 1
+
+            key_scenes.setdefault(key, {}).setdefault(str(u.get('Scene') or ''), []).append(mob.name)
 
             if write_notes and info.get("take_notes"):
                 if "Comment" in u:
@@ -1327,6 +1343,17 @@ def process_avb(avb_path, out_path, clip_data, log, write_rating=True, write_not
     log(f"AVB verwerkt: {matched} clip(s) gematcht op Scene/Slate/Take", "info")
     for col in sorted(missing_cols):
         log(f"Let op: kolom '{col}' bestaat niet in deze bin — genegeerd.", "warn")
+    # Eén slate+take-sleutel die bij méér dan één scene hoort is dubbelzinnig:
+    # dezelfde PDF-notitie is dan naar meerdere, mogelijk onverwante clips
+    # geschreven. Geen aanname maken — expliciet melden zodat de gebruiker
+    # zelf controleert welke clip de notitie echt betreft.
+    for key, scenes in key_scenes.items():
+        if len(scenes) > 1:
+            detail = "; ".join(f"scene {sc or '?'}: {', '.join(names)}"
+                                for sc, names in scenes.items())
+            log(f"Dubbelzinnig: slate/take {key} komt voor bij meerdere scenes in de bin "
+                f"({detail}) — dezelfde PDF-notitie is naar al deze clips geschreven. "
+                f"Controleer handmatig welke klopt.", "warn")
     return matched
 
 
