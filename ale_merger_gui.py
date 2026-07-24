@@ -602,9 +602,18 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                         ext = tbl.extract()
                         if not ext: continue
                         headers = [str(c or "").strip() for c in ext[0]]
-                        if "TAKE" not in headers or "Notes" not in headers:
+                        if "TAKE" not in headers:
                             continue
-                        notes_i = headers.index("Notes")
+                        # "Notes" staat altijd op kolomindex 4 in dit format, maar
+                        # pdfplumber laat de headertekst op sommige pagina's leeg
+                        # terwijl de data er wél gewoon staat — val dan terug op
+                        # de vaste positie i.p.v. de hele pagina over te slaan.
+                        if "Notes" in headers:
+                            notes_i = headers.index("Notes")
+                        elif len(headers) > 4:
+                            notes_i = 4
+                        else:
+                            continue
                         gng_i   = headers.index("G / NG") if "G / NG" in headers else None
                         pu_i    = headers.index("PU") if "PU" in headers else None
 
