@@ -2805,8 +2805,9 @@ def _load_prefs():
             data = _json_prefs.loads(_PREFS_FILE.read_text("utf-8"))
             prefs = {**_PREFS_DEFAULTS, **data}
             # Sanitize: herstel placeholder-waarden naar Auto
-            for key in ("rating_col", "notes_col"):
-                if prefs[key] in _INVALID_COL_VALUES:
+            for key in ("rating_col", "notes_col", "pu_col", "afg_col", "scene_col",
+                        "sound_notes_col", "camera_notes_col", "general_notes_col"):
+                if prefs.get(key) in _INVALID_COL_VALUES:
                     prefs[key] = "Auto"
             # Zorg dat recent-lijsten lists zijn
             for key in ("rating_col_recent", "notes_col_recent"):
@@ -4171,9 +4172,14 @@ rm -rf "$STAGE"
                      font=(UI_FONT, 11),
                      px=16, py=7, r=10, pbg=BG).pack(side="left")
 
-    def _pick_column(self, var, parent_win=None):
-        """Zoekbaar keuzevenster met alle bekende Avid-kolomnamen."""
-        _prev_val = var.get()
+    def _pick_column(self, var, parent_win=None, fallback=None):
+        """Zoekbaar keuzevenster met alle bekende Avid-kolomnamen.
+
+        fallback: waarde om naar terug te vallen bij Annuleren. var.get() is op
+        dit moment al overschreven met de placeholder-tekst (de combobox-selectie
+        die dit venster opende) — zonder expliciete fallback zou Annuleren dus de
+        placeholder zélf terugzetten in plaats van de vorige, echte waarde."""
+        _prev_val = fallback if fallback is not None else var.get()
         anchor = parent_win or self.root
 
         dlg = tk.Toplevel(anchor)
@@ -4407,9 +4413,16 @@ rm -rf "$STAGE"
                               state="normal", width=16,
                               style="CB.TCombobox", font=(UI_FONT, 11))
             cb.pack(side="left")
+            # Onthoud de laatst geldige (niet-placeholder) waarde, want zodra de
+            # combobox-selectie vuurt staat var al op de placeholder-tekst zelf —
+            # zonder dit zou Annuleren in _pick_column die placeholder terugzetten
+            # i.p.v. de vorige echte waarde.
+            _last_valid = [var.get() if var.get() != CUSTOM else "Auto"]
             def _on_select(e):
                 if var.get() == CUSTOM:
-                    self._pick_column(var, win)
+                    self._pick_column(var, win, fallback=_last_valid[0])
+                else:
+                    _last_valid[0] = var.get()
             cb.bind("<<ComboboxSelected>>", _on_select)
             return cb
 
@@ -4557,8 +4570,13 @@ rm -rf "$STAGE"
                               state="normal", width=16,
                               style="CB.TCombobox", font=(UI_FONT, 11))
             cb.pack(side="left")
-            cb.bind("<<ComboboxSelected>>",
-                    lambda e: self._pick_column(var, win) if var.get() == CUSTOM else None)
+            _last_valid = [var.get() if var.get() != CUSTOM else "Auto"]
+            def _on_select(e):
+                if var.get() == CUSTOM:
+                    self._pick_column(var, win, fallback=_last_valid[0])
+                else:
+                    _last_valid[0] = var.get()
+            cb.bind("<<ComboboxSelected>>", _on_select)
             return cb
 
         _section(t("prefs_section_general"))
