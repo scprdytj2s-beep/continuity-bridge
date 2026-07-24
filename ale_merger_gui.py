@@ -684,6 +684,8 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                                     "page_note":   page_note,
                                     "is_pu":       is_pu,
                                     "stars":       str(stars) if stars else "",
+                                    "pdf_path":    str(pdf_path),
+                                    "pdf_page":    page.page_number,
                                 }
 
                 except Exception as _e:
@@ -897,13 +899,59 @@ def _cw_add(cw_dict, idx, val):
             cw_dict.setdefault(idx, []).append(v)
 
 
+def detect_ale_ambiguities(ale_path, clip_data):
+    """Alleen-lezen voorpas voor het TDDOS-matchpad in een ALE: retourneert
+    dict key → {scene: [namen]} voor elke slate/take-sleutel die in de ALE
+    bij meer dan één scene voorkomt (zelfde soort controle als bij AVB)."""
+    with open(ale_path, "rb") as f:
+        raw = f.read()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("mac_roman", errors="replace")
+    lines = text.splitlines()
+
+    col_idx = data_idx = None
+    for i, line in enumerate(lines):
+        if line.strip() == "Column": col_idx = i
+        if line.strip() == "Data":   data_idx = i; break
+    if col_idx is None or data_idx is None:
+        return {}
+
+    raw_headers = lines[col_idx + 1].split("\t")
+    while raw_headers and not raw_headers[-1].strip():
+        raw_headers.pop()
+    name_idx = next((i for i, h in enumerate(raw_headers) if h.lower() == "name"), None)
+    if name_idx is None:
+        return {}
+
+    key_scenes = {}
+    for line in lines[data_idx + 1:]:
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if name_idx >= len(parts):
+            continue
+        m = re.match(r'\d+-(\S+?)-(\d{3})-(\d+)', parts[name_idx])
+        if not m:
+            continue
+        row_scene, slate, take = m.group(1), m.group(2), m.group(3)
+        key = f"{slate}-{take.zfill(2)}"
+        if key not in clip_data:
+            continue
+        key_scenes.setdefault(key, {}).setdefault(row_scene, []).append(parts[name_idx])
+
+    return {k: v for k, v in key_scenes.items() if len(v) > 1}
+
+
 def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", rating_col="Auto",
                 sound_notes_col="Auto", camera_notes_col="Auto",
                 pu_col="Auto", pu_position="voor",
                 pu_eigen_kolom=False, pu_eigen_kolom_naam="PU",
                 afg_col="Auto", afg_position="voor",
                 general_notes_col="Auto", star_format="sterren",
-                scene_col="Auto"):
+                scene_col="Auto", resolutions=None):
+    resolutions = resolutions or {}
     with open(ale_path, "rb") as f:
         raw = f.read()
 
@@ -1158,10 +1206,17 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
         # TDDOS: ALE Name "DD-SCENE-SLATE-TAKE" → key "SLATE-TAKE"
         # bv. "02-30B-009-01" → zoek "009-01" in clip_data
         if info is None:
-            m_tddos = re.match(r'\d+-\S+?-(\d{3})-(\d+)', parts[name_idx])
+            m_tddos = re.match(r'\d+-(\S+?)-(\d{3})-(\d+)', parts[name_idx])
             if m_tddos:
-                tddos_key = f"{m_tddos.group(1)}-{m_tddos.group(2).zfill(2)}"
-                info = clip_data.get(tddos_key)
+                row_scene  = m_tddos.group(1)
+                tddos_key  = f"{m_tddos.group(2)}-{m_tddos.group(3).zfill(2)}"
+                if tddos_key in resolutions:
+                    chosen = resolutions[tddos_key]
+                    if chosen is not None and row_scene == chosen:
+                        info = clip_data.get(tddos_key)
+                    # anders: expliciet overgeslagen, of een andere scene gekozen
+                else:
+                    info = clip_data.get(tddos_key)
 
         # LockitNetwork DE: BCP-camera ALE-naam "B001_05301052_C002" → "LNDE_B:001:002"
         if info is None:
@@ -1541,7 +1596,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "menu_faq":                "FAQ…",
         "menu_check_updates":      "Check voor updates…",
         # Sectielabels hoofdscherm
-        "section_ale":             "Avid Log Exchange file (ALE)",
+        "section_ale":             "Avid ALE-bestand of .avb-bin",
         "section_pdf":             "Continuïteitsrapport (PDF)",
         "section_notes_col":       "Notes → kolom",
         # Bestandswidget
@@ -1683,6 +1738,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "ambig_hint":              "Deze slate/take komt voor bij meerdere scenes in de bin — "
                                     "kies welke de PDF-notitie moet krijgen.",
         "ambig_option_skip":       "Overslaan (schrijf niets)",
+        "btn_open_pdf":            "Open PDF (zie pagina {page})",
         "btn_continue":            "Doorgaan",
         # Bestandsdialogen
         "dlg_pick_pdf":            "Kies PDF bestanden",
@@ -1787,7 +1843,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "menu_faq":                "FAQ…",
         "menu_check_updates":      "Check for Updates…",
         # Main screen section labels
-        "section_ale":             "Avid Log Exchange file (ALE)",
+        "section_ale":             "Avid ALE file or .avb bin",
         "section_pdf":             "Continuity Report (PDF)",
         "section_notes_col":       "Notes → column",
         # File widget
@@ -1929,6 +1985,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "ambig_hint":              "This slate/take appears under multiple scenes in the bin — "
                                     "choose which one should get the PDF note.",
         "ambig_option_skip":       "Skip (write nothing)",
+        "btn_open_pdf":            "Open PDF (see page {page})",
         "btn_continue":            "Continue",
         # File dialogs
         "dlg_pick_pdf":            "Choose PDF files",
@@ -2033,7 +2090,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "menu_faq":                "FAQ…",
         "menu_check_updates":      "Nach Updates suchen…",
         # Abschnittsbeschriftungen Hauptfenster
-        "section_ale":             "Avid Log Exchange file (ALE)",
+        "section_ale":             "Avid ALE-Datei oder .avb-Bin",
         "section_pdf":             "Kontinuitätsbericht (PDF)",
         "section_notes_col":       "Notizen → Spalte",
         # Datei-Widget
@@ -2175,6 +2232,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "ambig_hint":              "Dieses Slate/Take kommt in der Bin bei mehreren Szenen vor — "
                                     "wähle, welche die PDF-Notiz erhalten soll.",
         "ambig_option_skip":       "Überspringen (nichts schreiben)",
+        "btn_open_pdf":            "PDF öffnen (siehe Seite {page})",
         "btn_continue":            "Weiter",
         # Dateidialoge
         "dlg_pick_pdf":            "PDF-Dateien wählen",
@@ -5498,12 +5556,24 @@ rm -rf "$STAGE"
         self._draw_verwerk(t("btn_busy"), disabled=True)
         threading.Thread(target=self._process, daemon=True).start()
 
-    def _show_ambiguity_dialog(self, ambiguities, on_done):
-        """Blokkerend keuzedialoog voor dubbelzinnige AVB-matches (zelfde
-        slate/take bij meerdere scenes). on_done(resolutions) met resolutions:
-        dict key → gekozen scene (str) of None (overslaan). Wordt aangeroepen
-        vanaf de hoofdthread via self.root.after(); de verwerkingsthread wacht
-        op een threading.Event() tot on_done is aangeroepen."""
+    def _open_pdf_at_page(self, pdf_path, page_num):
+        """Open een PDF in de standaardviewer op de opgegeven pagina. macOS
+        Preview respecteert het #page=N-fragment in een file://-URL."""
+        try:
+            import subprocess, urllib.parse
+            url = "file://" + urllib.parse.quote(str(pdf_path)) + f"#page={page_num}"
+            subprocess.Popen(["open", url])
+        except Exception as _e:
+            self.log(f"Kon PDF niet openen: {_e}", "warn")
+
+    def _show_ambiguity_dialog(self, ambiguities, on_done, clip_data=None):
+        """Blokkerend keuzedialoog voor dubbelzinnige matches (zelfde slate/take
+        bij meerdere scenes) — gebruikt voor zowel ALE als AVB. on_done(resolutions)
+        met resolutions: dict key → gekozen scene (str) of None (overslaan).
+        clip_data (optioneel) levert pdf_path/pdf_page voor een "Open PDF"-knop
+        zodat je de brontabel even kan checken. Wordt aangeroepen vanaf de
+        hoofdthread via self.root.after(); de verwerkingsthread wacht op een
+        threading.Event() tot on_done is aangeroepen."""
         dlg = tk.Toplevel(self.root)
         dlg.title(t("wintitle_ambiguous"))
         dlg.configure(bg=BG)
@@ -5533,8 +5603,20 @@ rm -rf "$STAGE"
             row = tk.Frame(inner, bg=SURFACE2,
                             highlightbackground=BORDER, highlightthickness=1)
             row.pack(fill="x", pady=6, ipady=6, ipadx=8)
-            tk.Label(row, text=f"Slate/Take {key}", bg=SURFACE2, fg=ACCENT2,
-                     font=(UI_FONT, 11, "bold")).pack(anchor="w", padx=10, pady=(6, 2))
+
+            head = tk.Frame(row, bg=SURFACE2)
+            head.pack(fill="x", padx=10, pady=(6, 2))
+            tk.Label(head, text=f"Slate/Take {key}", bg=SURFACE2, fg=ACCENT2,
+                     font=(UI_FONT, 11, "bold")).pack(side="left")
+
+            info = (clip_data or {}).get(key)
+            if info and info.get("pdf_path") and info.get("pdf_page"):
+                def _open_pdf(p=info["pdf_path"], pg=info["pdf_page"]):
+                    self._open_pdf_at_page(p, pg)
+                _rounded_btn(head, t("btn_open_pdf", page=info["pdf_page"]), _open_pdf,
+                             bg=SURFACE, hv=BORDER, fg=MUTED,
+                             font=(UI_FONT, 9),
+                             px=10, py=4, r=8, pbg=SURFACE2).pack(side="right")
 
             label_to_scene = {}
             var = tk.StringVar()
@@ -5563,9 +5645,10 @@ rm -rf "$STAGE"
 
         btn_row = tk.Frame(dlg, bg=BG)
         btn_row.pack(fill="x", padx=24, pady=16)
-        tk.Button(btn_row, text=t("btn_continue"), command=_confirm,
-                  bg=AVID_B, fg="white", relief="flat", font=(UI_FONT, 11, "bold"),
-                  padx=16, pady=6).pack(side="right")
+        _rounded_btn(btn_row, t("btn_continue"), _confirm,
+                     bg=AVID_B, hv=AVID_B_H, fg="white",
+                     font=(UI_FONT, 11, "bold"),
+                     px=20, py=7, r=10, pbg=BG).pack(side="right")
 
         dlg.protocol("WM_DELETE_WINDOW", _confirm)
 
@@ -5612,7 +5695,8 @@ rm -rf "$STAGE"
                             done_event = threading.Event()
                             def _show_dlg(_amb=ambiguities, _rh=result_holder, _ev=done_event):
                                 self._show_ambiguity_dialog(
-                                    _amb, lambda res: (_rh.__setitem__(0, res), _ev.set()))
+                                    _amb, lambda res: (_rh.__setitem__(0, res), _ev.set()),
+                                    clip_data=all_clips)
                             self.root.after(0, _show_dlg)
                             done_event.wait()
                             resolutions = result_holder[0] or {}
@@ -5628,7 +5712,21 @@ rm -rf "$STAGE"
                     self.log(t("log_saved", name=out.name), "ok")
                     continue
 
+                ale_ambiguities = detect_ale_ambiguities(ale_p, all_clips)
+                ale_resolutions = {}
+                if ale_ambiguities:
+                    result_holder = [None]
+                    done_event = threading.Event()
+                    def _show_dlg(_amb=ale_ambiguities, _rh=result_holder, _ev=done_event):
+                        self._show_ambiguity_dialog(
+                            _amb, lambda res: (_rh.__setitem__(0, res), _ev.set()),
+                            clip_data=all_clips)
+                    self.root.after(0, _show_dlg)
+                    done_event.wait()
+                    ale_resolutions = result_holder[0] or {}
+
                 result, src_encoding = process_ale(ale_p, all_clips, self.log,
+                                     resolutions=ale_resolutions,
                                      write_rating=self.write_rating.get(),
                                      notes_col=(self.notes_col.get()
                                               if self.write_notes.get() else "Uit"),
