@@ -932,7 +932,7 @@ def detect_ale_ambiguities(ale_path, clip_data):
         parts = line.split("\t")
         if name_idx >= len(parts):
             continue
-        m = re.match(r'\d+-(\S+?)-(\d{3})-(\d+)', parts[name_idx])
+        m = re.match(r'\d+-(\S+?)[-_](\d{3})-(\d+)', parts[name_idx])
         if not m:
             continue
         row_scene, slate, take = m.group(1), m.group(2), m.group(3)
@@ -1204,9 +1204,10 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
                     break
 
         # TDDOS: ALE Name "DD-SCENE-SLATE-TAKE" → key "SLATE-TAKE"
-        # bv. "02-30B-009-01" → zoek "009-01" in clip_data
+        # bv. "02-30B-009-01" of "02-34_048-03" (sommige dagen gebruiken een
+        # underscore i.p.v. streepje tussen scene en slate) → zoek "048-03"
         if info is None:
-            m_tddos = re.match(r'\d+-(\S+?)-(\d{3})-(\d+)', parts[name_idx])
+            m_tddos = re.match(r'\d+-(\S+?)[-_](\d{3})-(\d+)', parts[name_idx])
             if m_tddos:
                 row_scene  = m_tddos.group(1)
                 tddos_key  = f"{m_tddos.group(2)}-{m_tddos.group(3).zfill(2)}"
@@ -2483,18 +2484,19 @@ def _license_delete():
         pass
 
 
-# Continuity Bridge kleurpallet — diep donker, elektrisch paars
-BG       = "#060416"   # bijna-zwart met diepe paarse hint
-SURFACE  = "#0C0A22"   # kaartachtergrond
-SURFACE2 = "#161130"   # hover / actief
-BORDER   = "#2E2060"   # subtiele paarse rand
-TEXT     = "#F0ECFF"   # helder bijna-wit
-MUTED    = "#9C8FD0"   # gedempte subtekst (lichter voor leesbaarheid)
-AVID_B   = "#8B30F5"   # elektrisch paars (knop, header) — accentkleur, instelbaar
+# Continuity Bridge kleurpallet — neutraal donkergrijs (Avid Link-stijl),
+# paars uitsluitend als accentkleur (badges, primaire knop, selectie)
+BG       = "#18181A"   # neutrale, bijna-zwarte achtergrond
+SURFACE  = "#202022"   # kaart-/rijachtergrond
+SURFACE2 = "#2A2A2D"   # hover / actief / invoervelden
+BORDER   = "#38383B"   # neutrale, subtiele scheidingslijn
+TEXT     = "#F2F2F3"   # bijna-wit
+MUTED    = "#96969B"   # neutraal systeemgrijs voor subtekst
+AVID_B   = "#8B30F5"   # paars accent (badges, primaire knop) — instelbaar
 AVID_B_H = "#7A26E0"   # hover — iets donkerder
 ACCENT2  = "#B98CFF"   # lichter paars accent (FAQ-plus, kolomlabels)
-SUCCESS  = "#4ED98A"
-ERROR    = "#FF5577"
+SUCCESS  = "#32D74B"   # systeemgroen
+ERROR    = "#FF453A"   # systeemrood
 
 # Lettertypes — instelbaar via Voorkeuren (worden bij opstart uit prefs gezet)
 UI_FONT   = "Helvetica Neue"   # hoofd-UI-lettertype
@@ -2738,7 +2740,7 @@ _PREFS_DEFAULTS = {
     "translit_umlauts":   False,      # ü→ue, ö→oe, ä→ae, ß→ss bij export
     "ale_encoding":       "auto",     # auto (zoals invoer) | utf-8 | mac_roman
     "ui_scale":           100,        # interfacegrootte in % (90–150)
-    "ui_font":            "helvetica", # helvetica | systeem | leesbaar
+    "ui_font":            "systeem", # helvetica | systeem | leesbaar
     "accent":            "paars",     # paars | blauw | groen | roze | oranje
 }
 _INVALID_COL_VALUES = {"Kies kolom…", "Choose column…", "Spalte wählen…",
@@ -2867,7 +2869,7 @@ class App:
         _p = _load_prefs()
 
         # Uiterlijk toepassen vóór de widgets gebouwd worden: lettertype + accentkleur.
-        _apply_font(_p.get("ui_font", "helvetica"))
+        _apply_font(_p.get("ui_font", "systeem"))
         _apply_accent(_p.get("accent", "paars"))
         self._prev_accent = _p.get("accent", "paars")
 
@@ -2911,7 +2913,7 @@ class App:
         self.translit_umlauts   = tk.BooleanVar(value=_p.get("translit_umlauts", False))
         self.ale_encoding       = tk.StringVar(value=_p.get("ale_encoding", "auto"))
         self.ui_scale           = tk.IntVar(value=self._ui_scale_pct)
-        self.ui_font            = tk.StringVar(value=_p.get("ui_font", "helvetica"))
+        self.ui_font            = tk.StringVar(value=_p.get("ui_font", "systeem"))
         self.accent             = tk.StringVar(value=_p.get("accent", "paars"))
         self._prefs_cache = _p   # bewaar voor recents
 
@@ -5066,38 +5068,26 @@ rm -rf "$STAGE"
         attach()
 
     def _ui(self):
-        # ── Header (gradient canvas) ─────────────────────────────────────────
-        _HDR_H  = 56
+        # ── Header (vlakke titelbalk, Avid Link-stijl) ───────────────────────
+        _HDR_H  = 44
 
-        hdr_cv = tk.Canvas(self.root, height=_HDR_H, bd=0, highlightthickness=0)
+        hdr_cv = tk.Canvas(self.root, height=_HDR_H, bd=0, highlightthickness=0,
+                           bg=SURFACE)
         hdr_cv.pack(fill="x")
-
-        def _hex_rgb(h):
-            h = h.lstrip('#')
-            return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
 
         def _draw_hdr(event=None):
             w = hdr_cv.winfo_width()
             if w < 2:
                 hdr_cv.after(20, _draw_hdr); return
-            # Gradient afgeleid van de huidige accentkleur (AVID_B → donkerder)
-            gl = _hex_rgb(ACCENT2 if ACCENT2 else AVID_B)
-            gr = _hex_rgb(AVID_B_H)
             hdr_cv.delete("all")
-            step = max(1, w // 300)
-            for x in range(0, w + step, step):
-                tt = min(x / (w - 1), 1.0)
-                r = int(gl[0] + (gr[0] - gl[0]) * tt)
-                g = int(gl[1] + (gr[1] - gl[1]) * tt)
-                b = int(gl[2] + (gr[2] - gl[2]) * tt)
-                hdr_cv.create_rectangle(x, 0, x + step, _HDR_H,
-                                        fill=f"#{r:02x}{g:02x}{b:02x}", outline="")
-            hdr_cv.create_text(22, _HDR_H // 2,
-                               text="✦  Continuity Bridge", anchor="w",
-                               fill="white", font=(UI_FONT, 15, "bold"))
+            hdr_cv.create_rectangle(0, 0, w, _HDR_H, fill=SURFACE, outline="")
+            hdr_cv.create_rectangle(0, _HDR_H - 1, w, _HDR_H, fill=BORDER, outline="")
+            hdr_cv.create_text(20, _HDR_H // 2,
+                               text="Continuity Bridge", anchor="w",
+                               fill=TEXT, font=(UI_FONT, 13, "bold"))
             hdr_cv.create_text(w - 18, _HDR_H // 2,
                                text=f"v{VERSION}", anchor="e",
-                               fill="white", font=(UI_FONT, 10))
+                               fill=MUTED, font=(UI_FONT, 10))
 
         hdr_cv.bind("<Configure>", _draw_hdr)
         self._redraw_header = _draw_hdr
@@ -5117,9 +5107,9 @@ rm -rf "$STAGE"
             badge.pack(side="left", padx=(0, 8))
             def _draw_badge():
                 badge.delete("all")
-                badge.create_rectangle(0, 0, 20, 20, fill=AVID_B, outline="")
+                badge.create_oval(0, 0, 20, 20, fill=AVID_B, outline="")
                 badge.create_text(10, 10, text=str(number), fill="white",
-                                  font=(UI_FONT, 11, "bold"))
+                                  font=(UI_FONT, 10, "bold"))
             _draw_badge()
             self._badges.append(_draw_badge)
             tk.Label(row, text=text.upper(), bg=BG, fg=MUTED,
@@ -5228,13 +5218,18 @@ rm -rf "$STAGE"
                                 font=(UI_FONT, 11), px=11, py=4, r=8, pbg=BG)
         clear_cv.pack(side="right")
 
-        # ── Verwerk-knop (afgeronde Canvas, full-width) ──────────────────────
-        _VF = (UI_FONT, 16, "bold")
-        _VH = 52   # hoogte
-        _VR = 12   # hoek-radius
+        # ── Verwerk-knop (vlakke afgeronde Canvas, full-width) ───────────────
+        _VF = (UI_FONT, 14, "bold")
+        _VH = 44   # hoogte
+        _VR = 8    # hoek-radius
         self._btn_enabled = True
         self.btn = tk.Canvas(body, height=_VH, bd=0, highlightthickness=0, bg=BG, cursor="arrow")
         self.btn.pack(fill="x")
+
+        def _darken(hexcolor, amount):
+            r = int(hexcolor[1:3], 16); g = int(hexcolor[3:5], 16); b = int(hexcolor[5:7], 16)
+            f = 1.0 - amount
+            return f"#{int(r*f):02x}{int(g*f):02x}{int(b*f):02x}"
 
         def _draw_verwerk(label=None, darken=0.0, disabled=False):
             if label is None:
@@ -5244,10 +5239,9 @@ rm -rf "$STAGE"
             if disabled:
                 _rrect(self.btn, w, _VH, _VR, SURFACE2, MUTED, label, _VF)
             else:
-                # Gradient afgeleid van de huidige accentkleur (licht → donker)
-                _rrect_gradient(self.btn, w, _VH, _VR,
-                                ACCENT2, AVID_B_H, "#FFFFFF", label, _VF,
-                                darken=darken)
+                # Vlakke accentkleur, iets donkerder bij hover/press
+                fill = _darken(AVID_B, darken) if darken else AVID_B
+                _rrect(self.btn, w, _VH, _VR, fill, "#FFFFFF", label, _VF)
 
         def _on_verwerk_resize(e):
             if self._btn_enabled: _draw_verwerk()
@@ -5410,9 +5404,7 @@ rm -rf "$STAGE"
                                    bd=0, highlightthickness=0)
                     bc.pack(side="left", padx=(10, 6), pady=10)
                     _row_badge = "AVB" if (file_type == "ALE" and Path(p).suffix.lower() == ".avb") else file_type
-                    bc.create_rectangle(0, 0, 32, 18, fill=badge_color, outline="")
-                    bc.create_text(16, 9, text=_row_badge,
-                                   fill="white", font=(UI_FONT, 8, "bold"))
+                    _rrect(bc, 32, 18, 4, badge_color, "white", _row_badge, (UI_FONT, 8, "bold"))
 
                     # Bestandsnaam
                     tk.Label(row, text=Path(p).name, bg=SURFACE, fg=TEXT,
