@@ -3228,147 +3228,6 @@ rm -rf "$STAGE"
                                     px=16, py=7, r=10, pbg=BG)
             later_cv.pack(side="left")
 
-    # ── Layout Mapper ────────────────────────────────────────────────────
-    def _show_layout_mapper(self, pdf_path, on_done):
-        """Toon dialoog voor onbekend rapport-formaat. on_done(clips|None)."""
-        import pdfplumber as _plb
-
-        # Haal eerste tabel op
-        sample_headers = []
-        sample_rows    = []
-        try:
-            with _plb.open(pdf_path) as pdf:
-                for page in pdf.pages:
-                    for tbl in page.extract_tables():
-                        if tbl and len(tbl) >= 2:
-                            sample_headers = [str(c or "").strip() for c in tbl[0]]
-                            sample_rows    = [[str(c or "").strip() for c in r]
-                                              for r in tbl[1:6]]
-                            break
-                    if sample_headers:
-                        break
-        except Exception:
-            pass
-
-        if not sample_headers:
-            self.log("Rapport niet herkend en geen tabel gevonden in PDF.", "warn")
-            on_done(None)
-            return
-
-        dlg = tk.Toplevel(self.root)
-        dlg.title(t("wintitle_layout"))
-        dlg.configure(bg=BG)
-        dlg.resizable(True, True)
-        dlg.geometry("680x560")
-        dlg.grab_set()
-
-        import os as _os2
-        fname = _os2.path.basename(pdf_path)
-        tk.Label(dlg, text=t("layout_unknown_format"),
-                 bg=BG, fg=TEXT, font=(UI_FONT, 14, "bold")).pack(
-            anchor="w", padx=24, pady=(20, 2))
-        tk.Label(dlg, text=t("layout_hint", fname=fname),
-                 bg=BG, fg=MUTED, font=(UI_FONT, 11)).pack(
-            anchor="w", padx=24, pady=(0, 14))
-
-        # Tabel preview
-        tbl_frame = tk.Frame(dlg, bg=SURFACE2,
-                             highlightbackground=BORDER, highlightthickness=1)
-        tbl_frame.pack(fill="x", padx=24, pady=(0, 16))
-
-        FIELD_OPTIONS = [t("field_ignore"), t("field_slate_scene"), t("field_take"),
-                         t("field_note"), t("field_rating"), t("field_camera_roll")]
-
-        col_vars = []  # StringVar per kolom
-        for ci2, hdr in enumerate(sample_headers):
-            col_f = tk.Frame(tbl_frame, bg=SURFACE2)
-            col_f.grid(row=0, column=ci2, padx=6, pady=8, sticky="nw")
-            tk.Label(col_f, text=hdr or f"(kolom {ci2+1})",
-                     bg=SURFACE2, fg=ACCENT2,
-                     font=(UI_FONT, 10, "bold")).pack(anchor="w")
-            var = tk.StringVar(value=t("field_ignore"))
-            # Slim voorstel op basis van kolomnaam
-            h_low = hdr.lower()
-            if any(k in h_low for k in ("take", "tak")):
-                var.set(t("field_take"))
-            elif any(k in h_low for k in ("scene", "slate", "scèn", "scen")):
-                var.set(t("field_slate_scene"))
-            elif any(k in h_low for k in ("opmerking", "note", "comment", "descr")):
-                var.set(t("field_note"))
-            elif any(k in h_low for k in ("rating", "circle", "beoord", "✓", "v/x")):
-                var.set(t("field_rating"))
-            elif any(k in h_low for k in ("camera", "roll", "tape", "kaart", "card")):
-                var.set(t("field_camera_roll"))
-            col_vars.append(var)
-            om = tk.OptionMenu(col_f, var, *FIELD_OPTIONS)
-            om.config(bg=SURFACE2, fg=TEXT, activebackground=BORDER,
-                      font=(UI_FONT, 9), width=12)
-            om["menu"].config(bg=SURFACE2, fg=TEXT)
-            om.pack(anchor="w", pady=2)
-            # Preview eerste paar waarden
-            for row2 in sample_rows[:3]:
-                val = row2[ci2] if ci2 < len(row2) else ""
-                tk.Label(col_f, text=val[:18] or "–",
-                         bg=SURFACE2, fg=MUTED,
-                         font=(UI_FONT, 9)).pack(anchor="w")
-
-        # Naam voor deze layout
-        name_row = tk.Frame(dlg, bg=BG)
-        name_row.pack(fill="x", padx=24, pady=(0, 12))
-        tk.Label(name_row, text=t("layout_name_label"),
-                 bg=BG, fg=MUTED, font=(UI_FONT, 11)).pack(
-            side="left", padx=(0, 10))
-        name_var = tk.StringVar(value=fname.split(".")[0])
-        tk.Entry(name_row, textvariable=name_var, bg=SURFACE2, fg=TEXT,
-                 insertbackground=TEXT, relief="flat",
-                 font=(UI_FONT, 11), width=28).pack(side="left")
-
-        status_lbl = tk.Label(dlg, text="", bg=BG, fg=MUTED,
-                              font=(UI_FONT, 10))
-        status_lbl.pack(pady=(0, 6))
-
-        btn_row = tk.Frame(dlg, bg=BG)
-        btn_row.pack(pady=(0, 20))
-
-        def _confirm():
-            mapping = {}
-            FIELD_MAP = {
-                t("field_slate_scene"):  "slate",
-                t("field_take"):         "take",
-                t("field_note"):         "note",
-                t("field_rating"):       "rating",
-                t("field_camera_roll"):  "camera_roll",
-            }
-            for ci3, var in enumerate(col_vars):
-                field = FIELD_MAP.get(var.get())
-                if field:
-                    mapping[field] = sample_headers[ci3]
-            if "take" not in mapping:
-                status_lbl.config(fg=ERROR, text=t("layout_no_take_col"))
-                return
-            layout = {
-                "fingerprint": _fingerprint_table(sample_headers),
-                "name":        name_var.get().strip() or fname,
-                "mapping":     mapping,
-            }
-            _save_layout(layout)
-            clips = _parse_pdf_custom(pdf_path, layout, self.log)
-            dlg.destroy()
-            on_done(clips if clips else None)
-
-        def _skip():
-            dlg.destroy()
-            on_done(None)
-
-        _rounded_btn(btn_row, t("btn_detect_process"), _confirm,
-                     bg=AVID_B, hv=AVID_B_H, fg="white",
-                     font=(UI_FONT, 11, "bold"),
-                     px=20, py=7, r=10, pbg=BG).pack(side="left", padx=(0, 10))
-        _rounded_btn(btn_row, t("btn_skip"), _skip,
-                     bg=SURFACE2, hv=BORDER, fg=MUTED,
-                     font=(UI_FONT, 11),
-                     px=16, py=7, r=10, pbg=BG).pack(side="left")
-
         # ── FAQ-venster ──────────────────────────────────────────────────────
         def _show_faq():
             FAQ = [
@@ -4052,6 +3911,147 @@ rm -rf "$STAGE"
             self.root.after(0, self._apply_appearance_live)
         if HAS_NATIVE_DND and not HAS_DND:
             self.root.after(500, self._setup_native_dnd)
+
+    # ── Layout Mapper ────────────────────────────────────────────────────
+    def _show_layout_mapper(self, pdf_path, on_done):
+        """Toon dialoog voor onbekend rapport-formaat. on_done(clips|None)."""
+        import pdfplumber as _plb
+
+        # Haal eerste tabel op
+        sample_headers = []
+        sample_rows    = []
+        try:
+            with _plb.open(pdf_path) as pdf:
+                for page in pdf.pages:
+                    for tbl in page.extract_tables():
+                        if tbl and len(tbl) >= 2:
+                            sample_headers = [str(c or "").strip() for c in tbl[0]]
+                            sample_rows    = [[str(c or "").strip() for c in r]
+                                              for r in tbl[1:6]]
+                            break
+                    if sample_headers:
+                        break
+        except Exception:
+            pass
+
+        if not sample_headers:
+            self.log("Rapport niet herkend en geen tabel gevonden in PDF.", "warn")
+            on_done(None)
+            return
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title(t("wintitle_layout"))
+        dlg.configure(bg=BG)
+        dlg.resizable(True, True)
+        dlg.geometry("680x560")
+        dlg.grab_set()
+
+        import os as _os2
+        fname = _os2.path.basename(pdf_path)
+        tk.Label(dlg, text=t("layout_unknown_format"),
+                 bg=BG, fg=TEXT, font=(UI_FONT, 14, "bold")).pack(
+            anchor="w", padx=24, pady=(20, 2))
+        tk.Label(dlg, text=t("layout_hint", fname=fname),
+                 bg=BG, fg=MUTED, font=(UI_FONT, 11)).pack(
+            anchor="w", padx=24, pady=(0, 14))
+
+        # Tabel preview
+        tbl_frame = tk.Frame(dlg, bg=SURFACE2,
+                             highlightbackground=BORDER, highlightthickness=1)
+        tbl_frame.pack(fill="x", padx=24, pady=(0, 16))
+
+        FIELD_OPTIONS = [t("field_ignore"), t("field_slate_scene"), t("field_take"),
+                         t("field_note"), t("field_rating"), t("field_camera_roll")]
+
+        col_vars = []  # StringVar per kolom
+        for ci2, hdr in enumerate(sample_headers):
+            col_f = tk.Frame(tbl_frame, bg=SURFACE2)
+            col_f.grid(row=0, column=ci2, padx=6, pady=8, sticky="nw")
+            tk.Label(col_f, text=hdr or f"(kolom {ci2+1})",
+                     bg=SURFACE2, fg=ACCENT2,
+                     font=(UI_FONT, 10, "bold")).pack(anchor="w")
+            var = tk.StringVar(value=t("field_ignore"))
+            # Slim voorstel op basis van kolomnaam
+            h_low = hdr.lower()
+            if any(k in h_low for k in ("take", "tak")):
+                var.set(t("field_take"))
+            elif any(k in h_low for k in ("scene", "slate", "scèn", "scen")):
+                var.set(t("field_slate_scene"))
+            elif any(k in h_low for k in ("opmerking", "note", "comment", "descr")):
+                var.set(t("field_note"))
+            elif any(k in h_low for k in ("rating", "circle", "beoord", "✓", "v/x")):
+                var.set(t("field_rating"))
+            elif any(k in h_low for k in ("camera", "roll", "tape", "kaart", "card")):
+                var.set(t("field_camera_roll"))
+            col_vars.append(var)
+            om = tk.OptionMenu(col_f, var, *FIELD_OPTIONS)
+            om.config(bg=SURFACE2, fg=TEXT, activebackground=BORDER,
+                      font=(UI_FONT, 9), width=12)
+            om["menu"].config(bg=SURFACE2, fg=TEXT)
+            om.pack(anchor="w", pady=2)
+            # Preview eerste paar waarden
+            for row2 in sample_rows[:3]:
+                val = row2[ci2] if ci2 < len(row2) else ""
+                tk.Label(col_f, text=val[:18] or "–",
+                         bg=SURFACE2, fg=MUTED,
+                         font=(UI_FONT, 9)).pack(anchor="w")
+
+        # Naam voor deze layout
+        name_row = tk.Frame(dlg, bg=BG)
+        name_row.pack(fill="x", padx=24, pady=(0, 12))
+        tk.Label(name_row, text=t("layout_name_label"),
+                 bg=BG, fg=MUTED, font=(UI_FONT, 11)).pack(
+            side="left", padx=(0, 10))
+        name_var = tk.StringVar(value=fname.split(".")[0])
+        tk.Entry(name_row, textvariable=name_var, bg=SURFACE2, fg=TEXT,
+                 insertbackground=TEXT, relief="flat",
+                 font=(UI_FONT, 11), width=28).pack(side="left")
+
+        status_lbl = tk.Label(dlg, text="", bg=BG, fg=MUTED,
+                              font=(UI_FONT, 10))
+        status_lbl.pack(pady=(0, 6))
+
+        btn_row = tk.Frame(dlg, bg=BG)
+        btn_row.pack(pady=(0, 20))
+
+        def _confirm():
+            mapping = {}
+            FIELD_MAP = {
+                t("field_slate_scene"):  "slate",
+                t("field_take"):         "take",
+                t("field_note"):         "note",
+                t("field_rating"):       "rating",
+                t("field_camera_roll"):  "camera_roll",
+            }
+            for ci3, var in enumerate(col_vars):
+                field = FIELD_MAP.get(var.get())
+                if field:
+                    mapping[field] = sample_headers[ci3]
+            if "take" not in mapping:
+                status_lbl.config(fg=ERROR, text=t("layout_no_take_col"))
+                return
+            layout = {
+                "fingerprint": _fingerprint_table(sample_headers),
+                "name":        name_var.get().strip() or fname,
+                "mapping":     mapping,
+            }
+            _save_layout(layout)
+            clips = _parse_pdf_custom(pdf_path, layout, self.log)
+            dlg.destroy()
+            on_done(clips if clips else None)
+
+        def _skip():
+            dlg.destroy()
+            on_done(None)
+
+        _rounded_btn(btn_row, t("btn_detect_process"), _confirm,
+                     bg=AVID_B, hv=AVID_B_H, fg="white",
+                     font=(UI_FONT, 11, "bold"),
+                     px=20, py=7, r=10, pbg=BG).pack(side="left", padx=(0, 10))
+        _rounded_btn(btn_row, t("btn_skip"), _skip,
+                     bg=SURFACE2, hv=BORDER, fg=MUTED,
+                     font=(UI_FONT, 11),
+                     px=16, py=7, r=10, pbg=BG).pack(side="left")
 
     def _pick_column(self, var, parent_win=None):
         """Zoekbaar keuzevenster met alle bekende Avid-kolomnamen."""
