@@ -616,6 +616,7 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                             continue
                         gng_i   = headers.index("G / NG") if "G / NG" in headers else None
                         pu_i    = headers.index("PU") if "PU" in headers else None
+                        af_i    = headers.index("AF") if "AF" in headers else None
 
                         for ri, row in enumerate(tbl.rows[1:], 1):
                             if ri >= len(ext): break
@@ -652,7 +653,23 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                                 except Exception:
                                     pass
 
-                            if not note and not stars and not is_pu:
+                            # AF (afgebroken take) detecteren — zelfde pixel-analyse als PU,
+                            # maar dan op de aparte AF-kolom
+                            is_afg = False
+                            if write_afg and af_i is not None:
+                                try:
+                                    af_cell = row.cells[af_i]
+                                    ax0, atop, ax1, abottom = af_cell
+                                    af_crop = page.crop((ax0, atop, ax1, abottom))
+                                    af_img  = af_crop.to_image(resolution=150).original.convert('L')
+                                    aw, ah  = af_img.size
+                                    dark    = sum(1 for py in range(ah) for px in range(aw)
+                                                  if af_img.getpixel((px, py)) < 80)
+                                    is_afg  = dark >= 30
+                                except Exception:
+                                    pass
+
+                            if not note and not stars and not is_pu and not is_afg:
                                 continue
 
                             try:
@@ -683,6 +700,7 @@ def parse_pdf(pdf_path, log, write_pu=True, write_afg=True):
                                     "take_notes":  note or page_note,
                                     "page_note":   page_note,
                                     "is_pu":       is_pu,
+                                    "is_afg":      is_afg,
                                     "stars":       str(stars) if stars else "",
                                     "pdf_path":    str(pdf_path),
                                     "pdf_page":    page.page_number,
