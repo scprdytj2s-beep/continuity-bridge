@@ -1282,14 +1282,52 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
 # AVB BIN WRITER (alternatief voor ALE-export/re-import)
 # ---------------------------------------------------------------------------
 
+def _avb_mob_key(u):
+    """Bouwt de 'SLATE-TAKE' matchsleutel uit de _USER-attributen van een mob,
+    of None als Slate/Take ontbreken of niet numeriek zijn."""
+    slate = str(u.get('Slate') or '').strip()
+    take  = str(u.get('Take')  or '').strip()
+    if not slate or not take:
+        return None
+    try:
+        return f"{int(slate):03d}-{int(take):02d}"
+    except ValueError:
+        return None
+
+
+def detect_avb_ambiguities(avb_path, clip_data):
+    """Alleen-lezen voorpas: retourneert dict key → {scene: [clipnamen]} voor
+    elke slate/take-sleutel die in de bin bij meer dan één scene voorkomt.
+    Wordt vóór process_avb() aangeroepen zodat de gebruiker kan kiezen welke
+    scene de PDF-notitie krijgt, in plaats van dat CB dat zelf raadt."""
+    import avb
+    key_scenes = {}
+    with avb.open(str(avb_path)) as f:
+        for mob in f.content.mobs:
+            u = mob.attributes.get('_USER')
+            if u is None:
+                continue
+            key = _avb_mob_key(u)
+            if key is None or key not in clip_data:
+                continue
+            key_scenes.setdefault(key, {}).setdefault(str(u.get('Scene') or ''), []).append(mob.name)
+    return {k: v for k, v in key_scenes.items() if len(v) > 1}
+
+
 def process_avb(avb_path, out_path, clip_data, log, write_rating=True, write_notes=True,
-                 star_format="sterren"):
+                 star_format="sterren", resolutions=None):
     """Schrijft PDF-continuity-data direct in een Avid .avb-bin i.p.v. een ALE
     te exporteren die je zelf terug moet importeren. Matcht elke Composition-mob
     op zijn eigen 'Slate'/'Take' user-attributen (sleutel "SLATE-TAKE", dezelfde
     vorm als parse_pdf() produceert) — geen naam-regex nodig zoals bij ALE.
     Schrijft altijd naar out_path (nieuw bestand); het origineel wordt nooit
-    geopend voor schrijven, dus de bin in gebruik blijft veilig ongewijzigd."""
+    geopend voor schrijven, dus de bin in gebruik blijft veilig ongewijzigd.
+
+    resolutions: optionele dict key → gekozen scene (str) of None (overslaan),
+    zoals geproduceerd door detect_avb_ambiguities() + een keuzedialoog. Een
+    sleutel die niet in resolutions voorkomt wordt behandeld als ondubbelzinnig
+    (normaal geschreven, met een waarschuwing als hij dat toch niet blijkt)."""
+    resolutions = resolutions or {}
     import avb
     matched = 0
     missing_cols = set()
@@ -1299,20 +1337,21 @@ def process_avb(avb_path, out_path, clip_data, log, write_rating=True, write_not
             u = mob.attributes.get('_USER')
             if u is None:
                 continue
-            slate = str(u.get('Slate') or '').strip()
-            take  = str(u.get('Take')  or '').strip()
-            if not slate or not take:
-                continue
-            try:
-                key = f"{int(slate):03d}-{int(take):02d}"
-            except ValueError:
+            key = _avb_mob_key(u)
+            if key is None:
                 continue
             info = clip_data.get(key)
             if not info:
                 continue
+
+            mob_scene = str(u.get('Scene') or '')
+            if key in resolutions:
+                chosen = resolutions[key]
+                if chosen is None or mob_scene != chosen:
+                    continue  # gebruiker koos een andere scene, of expliciet overslaan
             matched += 1
 
-            key_scenes.setdefault(key, {}).setdefault(str(u.get('Scene') or ''), []).append(mob.name)
+            key_scenes.setdefault(key, {}).setdefault(mob_scene, []).append(mob.name)
 
             if write_notes and info.get("take_notes"):
                 if "Comment" in u:
@@ -1343,6 +1382,9 @@ def process_avb(avb_path, out_path, clip_data, log, write_rating=True, write_not
     log(f"AVB verwerkt: {matched} clip(s) gematcht op Scene/Slate/Take", "info")
     for col in sorted(missing_cols):
         log(f"Let op: kolom '{col}' bestaat niet in deze bin — genegeerd.", "warn")
+    for key, chosen in resolutions.items():
+        if chosen is None:
+            log(f"Slate/take {key} overgeslagen op verzoek (dubbelzinnige match).", "info")
     # Eén slate+take-sleutel die bij méér dan één scene hoort is dubbelzinnig:
     # dezelfde PDF-notitie is dan naar meerdere, mogelijk onverwante clips
     # geschreven. Geen aanname maken — expliciet melden zodat de gebruiker
@@ -1636,6 +1678,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "field_note":              "Opmerking / Note",
         "field_rating":            "Rating (V/X)",
         "field_camera_roll":       "Camerarol",
+        # Dubbelzinnige AVB-matches
+        "wintitle_ambiguous":      "Dubbelzinnige match",
+        "ambig_hint":              "Deze slate/take komt voor bij meerdere scenes in de bin — "
+                                    "kies welke de PDF-notitie moet krijgen.",
+        "ambig_option_skip":       "Overslaan (schrijf niets)",
+        "btn_continue":            "Doorgaan",
         # Bestandsdialogen
         "dlg_pick_pdf":            "Kies PDF bestanden",
         "dlg_pick_ale":            "Kies ALE bestanden",
@@ -1876,6 +1924,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "field_note":              "Note / Comment",
         "field_rating":            "Rating (V/X)",
         "field_camera_roll":       "Camera roll",
+        # Ambiguous AVB matches
+        "wintitle_ambiguous":      "Ambiguous match",
+        "ambig_hint":              "This slate/take appears under multiple scenes in the bin — "
+                                    "choose which one should get the PDF note.",
+        "ambig_option_skip":       "Skip (write nothing)",
+        "btn_continue":            "Continue",
         # File dialogs
         "dlg_pick_pdf":            "Choose PDF files",
         "dlg_pick_ale":            "Choose ALE files",
@@ -2116,6 +2170,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "field_note":              "Anmerkung / Notiz",
         "field_rating":            "Bewertung (V/X)",
         "field_camera_roll":       "Kamerarolle",
+        # Mehrdeutige AVB-Treffer
+        "wintitle_ambiguous":      "Mehrdeutiger Treffer",
+        "ambig_hint":              "Dieses Slate/Take kommt in der Bin bei mehreren Szenen vor — "
+                                    "wähle, welche die PDF-Notiz erhalten soll.",
+        "ambig_option_skip":       "Überspringen (nichts schreiben)",
+        "btn_continue":            "Weiter",
         # Dateidialoge
         "dlg_pick_pdf":            "PDF-Dateien wählen",
         "dlg_pick_ale":            "ALE-Dateien wählen",
@@ -5438,6 +5498,77 @@ rm -rf "$STAGE"
         self._draw_verwerk(t("btn_busy"), disabled=True)
         threading.Thread(target=self._process, daemon=True).start()
 
+    def _show_ambiguity_dialog(self, ambiguities, on_done):
+        """Blokkerend keuzedialoog voor dubbelzinnige AVB-matches (zelfde
+        slate/take bij meerdere scenes). on_done(resolutions) met resolutions:
+        dict key → gekozen scene (str) of None (overslaan). Wordt aangeroepen
+        vanaf de hoofdthread via self.root.after(); de verwerkingsthread wacht
+        op een threading.Event() tot on_done is aangeroepen."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title(t("wintitle_ambiguous"))
+        dlg.configure(bg=BG)
+        dlg.resizable(True, True)
+        dlg.geometry("640x520")
+        dlg.grab_set()
+
+        tk.Label(dlg, text=t("ambig_hint"), bg=BG, fg=TEXT,
+                 font=(UI_FONT, 12), wraplength=580, justify="left").pack(
+            anchor="w", padx=24, pady=(20, 14))
+
+        host = tk.Frame(dlg, bg=BG)
+        host.pack(fill="both", expand=True, padx=24)
+        cv = tk.Canvas(host, bg=BG, highlightthickness=0)
+        sb = ttk.Scrollbar(host, orient="vertical", command=cv.yview)
+        inner = tk.Frame(cv, bg=BG)
+        inner.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+        cv.create_window((0, 0), window=inner, anchor="nw")
+        cv.configure(yscrollcommand=sb.set)
+        cv.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        SKIP = t("ambig_option_skip")
+        choice_vars = {}  # key → (StringVar, {label: scene})
+
+        for key, scenes in ambiguities.items():
+            row = tk.Frame(inner, bg=SURFACE2,
+                            highlightbackground=BORDER, highlightthickness=1)
+            row.pack(fill="x", pady=6, ipady=6, ipadx=8)
+            tk.Label(row, text=f"Slate/Take {key}", bg=SURFACE2, fg=ACCENT2,
+                     font=(UI_FONT, 11, "bold")).pack(anchor="w", padx=10, pady=(6, 2))
+
+            label_to_scene = {}
+            var = tk.StringVar()
+            for scene, names in scenes.items():
+                label = f"Scene {scene or '?'} — {', '.join(names)}"
+                label_to_scene[label] = scene
+                if not var.get():
+                    var.set(label)
+                tk.Radiobutton(row, text=label, variable=var, value=label,
+                               bg=SURFACE2, fg=TEXT, selectcolor=SURFACE,
+                               activebackground=SURFACE2, activeforeground=TEXT,
+                               font=(UI_FONT, 10)).pack(anchor="w", padx=20)
+            tk.Radiobutton(row, text=SKIP, variable=var, value=SKIP,
+                           bg=SURFACE2, fg=MUTED, selectcolor=SURFACE,
+                           activebackground=SURFACE2, activeforeground=TEXT,
+                           font=(UI_FONT, 10)).pack(anchor="w", padx=20, pady=(0, 4))
+            choice_vars[key] = (var, label_to_scene)
+
+        def _confirm():
+            resolutions = {}
+            for key, (var, label_to_scene) in choice_vars.items():
+                chosen = var.get()
+                resolutions[key] = None if chosen == SKIP else label_to_scene.get(chosen)
+            dlg.destroy()
+            on_done(resolutions)
+
+        btn_row = tk.Frame(dlg, bg=BG)
+        btn_row.pack(fill="x", padx=24, pady=16)
+        tk.Button(btn_row, text=t("btn_continue"), command=_confirm,
+                  bg=AVID_B, fg="white", relief="flat", font=(UI_FONT, 11, "bold"),
+                  padx=16, pady=6).pack(side="right")
+
+        dlg.protocol("WM_DELETE_WINDOW", _confirm)
+
     def _process(self):
         try:
             # ── Stap 1: alle PDFs parsen en clips samenvoegen ────────────
@@ -5474,10 +5605,22 @@ rm -rf "$STAGE"
                     out     = out_dir / f"{stem}{_out_suffix}.avb"
                     try:
                         out_dir.mkdir(parents=True, exist_ok=True)
+                        ambiguities = detect_avb_ambiguities(Path(ale_p), all_clips)
+                        resolutions = {}
+                        if ambiguities:
+                            result_holder = [None]
+                            done_event = threading.Event()
+                            def _show_dlg(_amb=ambiguities, _rh=result_holder, _ev=done_event):
+                                self._show_ambiguity_dialog(
+                                    _amb, lambda res: (_rh.__setitem__(0, res), _ev.set()))
+                            self.root.after(0, _show_dlg)
+                            done_event.wait()
+                            resolutions = result_holder[0] or {}
                         process_avb(Path(ale_p), out, all_clips, self.log,
                                     write_rating=self.write_rating.get(),
                                     write_notes=self.write_notes.get(),
-                                    star_format=self.star_format.get())
+                                    star_format=self.star_format.get(),
+                                    resolutions=resolutions)
                     except Exception as _e:
                         self.log(f"Fout bij AVB '{Path(ale_p).name}': {_e}", "err")
                         continue
