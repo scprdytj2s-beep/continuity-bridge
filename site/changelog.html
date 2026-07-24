@@ -429,7 +429,7 @@
           <div class="change-group">
             <div class="change-group-label ${CL_LABEL_CLASS[g.kind]}">${t(CL_LABEL_KEY[g.kind], lang)}</div>
             <ul class="change-list">
-              ${g.items.map(it => `<li>${it[lang] || it.nl}</li>`).join('')}
+              ${g.items.map(it => `<li><span>${it[lang] || it.nl}</span></li>`).join('')}
             </ul>
           </div>`).join('');
 
