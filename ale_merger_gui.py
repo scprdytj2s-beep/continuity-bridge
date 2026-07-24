@@ -1658,10 +1658,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_stars_number":      "cijfer (1-5)",
         "prefs_stars_letter":      "letters (X/V)",
         "prefs_write_pu":          "Schrijf (PU)",
+        "tip_write_pu":            "Plakt \"(PU)\" ín een bestaande kolom, samen met je notities.\nBijv.: \"Shorter version (PU)\".",
         "prefs_pu_own_col":        "PU in eigen kolom",
+        "tip_pu_own_col":          "Aparte kolom met alléén het woord \"PU\" — los van je notities.\nKan tegelijk met \"Schrijf (PU)\" aanstaan (dan komt het op beide plekken).",
         "prefs_pu_col_name":       "Kolomnaam",
         "prefs_write_afg":         "Schrijf (AFG)",
+        "tip_write_afg":           "Plakt \"(AFG)\" ín een bestaande kolom, samen met je notities.\nBijv.: \"Shorter version (AFG)\".",
         "prefs_afg_own_col":       "AFG in eigen kolom",
+        "tip_afg_own_col":         "Aparte kolom met alléén het woord \"AFG\" — los van je notities.\nKan tegelijk met \"Schrijf (AFG)\" aanstaan (dan komt het op beide plekken).",
         "prefs_position":          "positie:",
         "prefs_pos_before":        "voor",
         "prefs_pos_after":         "achter",
@@ -1906,10 +1910,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_stars_number":      "number (1-5)",
         "prefs_stars_letter":      "letters (X/V)",
         "prefs_write_pu":          "Write (PU)",
+        "tip_write_pu":            "Adds \"(PU)\" inside an existing column, alongside your notes.\nE.g.: \"Shorter version (PU)\".",
         "prefs_pu_own_col":        "PU in separate column",
+        "tip_pu_own_col":          "A separate column containing only the word \"PU\" — independent of your notes.\nCan be on at the same time as \"Write (PU)\" (then it appears in both places).",
         "prefs_pu_col_name":       "Column name",
         "prefs_write_afg":         "Write (AFG)",
+        "tip_write_afg":           "Adds \"(AFG)\" inside an existing column, alongside your notes.\nE.g.: \"Shorter version (AFG)\".",
         "prefs_afg_own_col":       "AFG in separate column",
+        "tip_afg_own_col":         "A separate column containing only the word \"AFG\" — independent of your notes.\nCan be on at the same time as \"Write (AFG)\" (then it appears in both places).",
         "prefs_position":          "position:",
         "prefs_pos_before":        "before",
         "prefs_pos_after":         "after",
@@ -2154,10 +2162,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_stars_number":      "Zahl (1-5)",
         "prefs_stars_letter":      "Buchstaben (X/V)",
         "prefs_write_pu":          "Schreibe (PU)",
+        "tip_write_pu":            "Fügt \"(PU)\" in eine bestehende Spalte ein, zusammen mit deinen Notizen.\nZ.B.: \"Shorter version (PU)\".",
         "prefs_pu_own_col":        "PU in eigener Spalte",
+        "tip_pu_own_col":          "Eine eigene Spalte, die nur das Wort \"PU\" enthält — unabhängig von deinen Notizen.\nKann gleichzeitig mit \"Schreibe (PU)\" aktiv sein (dann erscheint es an beiden Stellen).",
         "prefs_pu_col_name":       "Spaltenname",
         "prefs_write_afg":         "Schreibe (AFG)",
+        "tip_write_afg":           "Fügt \"(AFG)\" in eine bestehende Spalte ein, zusammen mit deinen Notizen.\nZ.B.: \"Shorter version (AFG)\".",
         "prefs_afg_own_col":       "AFG in eigener Spalte",
+        "tip_afg_own_col":         "Eine eigene Spalte, die nur das Wort \"AFG\" enthält — unabhängig von deinen Notizen.\nKann gleichzeitig mit \"Schreibe (AFG)\" aktiv sein (dann erscheint es an beiden Stellen).",
         "prefs_position":          "Position:",
         "prefs_pos_before":        "vor",
         "prefs_pos_after":         "nach",
@@ -4352,6 +4364,37 @@ rm -rf "$STAGE"
                      font=(UI_FONT, 11), width=18, anchor="w").pack(side="left")
             return f
 
+        def _info_icon(parent, text):
+            """Klein ⓘ-icoontje met een tooltip die verschijnt na even hoveren."""
+            lbl = tk.Label(parent, text="ⓘ", bg=BG, fg=MUTED,
+                           font=(UI_FONT, 10), cursor="arrow")
+            _tip = {"win": None, "after_id": None}
+            def _show():
+                if _tip["win"] is not None:
+                    return
+                x = lbl.winfo_rootx()
+                y = lbl.winfo_rooty() + lbl.winfo_height() + 4
+                win = tk.Toplevel(self.root)
+                win.wm_overrideredirect(True)
+                win.wm_geometry(f"+{x}+{y}")
+                win.configure(bg=BORDER)
+                tk.Label(win, text=text, bg=SURFACE2, fg=TEXT,
+                         font=(UI_FONT, 10), justify="left", wraplength=280,
+                         padx=8, pady=6).pack(padx=1, pady=1)
+                _tip["win"] = win
+            def _on_enter(_e):
+                _tip["after_id"] = lbl.after(500, _show)
+            def _on_leave(_e):
+                if _tip["after_id"]:
+                    lbl.after_cancel(_tip["after_id"])
+                    _tip["after_id"] = None
+                if _tip["win"] is not None:
+                    _tip["win"].destroy()
+                    _tip["win"] = None
+            lbl.bind("<Enter>", _on_enter)
+            lbl.bind("<Leave>", _on_leave)
+            return lbl
+
         # Stijl voor alle comboboxen in dit venster
         style = ttk.Style()
         CUSTOM = t("col_pick_placeholder")
@@ -4440,6 +4483,7 @@ rm -rf "$STAGE"
         def _on_pu_pos(e):
             self.pu_position.set(_POS_TO_CODE.get(_pu_pos_display.get(), "voor"))
         _pu_pos_cb.bind("<<ComboboxSelected>>", _on_pu_pos)
+        _info_icon(r5, t("tip_write_pu")).pack(side="left", padx=(6, 0))
 
         # PU eigen kolom: checkbox + kolomnaam entry
         r5b = _row(t("prefs_pu_own_col"))
@@ -4455,6 +4499,7 @@ rm -rf "$STAGE"
                                 width=10, bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
                                 relief="flat", font=(UI_FONT, 11))
         _pu_kn_entry.pack(side="left")
+        _info_icon(r5b, t("tip_pu_own_col")).pack(side="left", padx=(6, 0))
 
         # AFG: checkbox + "→" + kolom-dropdown + voor/achter
         AFG_COLS = ["Auto", "Name", "Comment", "Comments", "Notes", "Take_Notes"]
@@ -4477,6 +4522,7 @@ rm -rf "$STAGE"
         def _on_afg_pos(e):
             self.afg_position.set(_POS_TO_CODE.get(_afg_pos_display.get(), "voor"))
         _afg_pos_cb.bind("<<ComboboxSelected>>", _on_afg_pos)
+        _info_icon(r6, t("tip_write_afg")).pack(side="left", padx=(6, 0))
 
         # AFG eigen kolom: checkbox + kolomnaam entry
         r6b = _row(t("prefs_afg_own_col"))
@@ -4492,6 +4538,7 @@ rm -rf "$STAGE"
                                 width=10, bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
                                 relief="flat", font=(UI_FONT, 11))
         _afg_kn_entry.pack(side="left")
+        _info_icon(r6b, t("tip_afg_own_col")).pack(side="left", padx=(6, 0))
 
         def _row2(label):
             f = tk.Frame(_sec[0], bg=BG, height=ROW)
