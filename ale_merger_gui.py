@@ -1266,6 +1266,71 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
 
 
 # ---------------------------------------------------------------------------
+# AVB BIN WRITER (alternatief voor ALE-export/re-import)
+# ---------------------------------------------------------------------------
+
+def process_avb(avb_path, out_path, clip_data, log, write_rating=True, write_notes=True,
+                 star_format="sterren"):
+    """Schrijft PDF-continuity-data direct in een Avid .avb-bin i.p.v. een ALE
+    te exporteren die je zelf terug moet importeren. Matcht elke Composition-mob
+    op zijn eigen 'Slate'/'Take' user-attributen (sleutel "SLATE-TAKE", dezelfde
+    vorm als parse_pdf() produceert) — geen naam-regex nodig zoals bij ALE.
+    Schrijft altijd naar out_path (nieuw bestand); het origineel wordt nooit
+    geopend voor schrijven, dus de bin in gebruik blijft veilig ongewijzigd."""
+    import avb
+    matched = 0
+    missing_cols = set()
+    with avb.open(str(avb_path)) as f:
+        for mob in f.content.mobs:
+            u = mob.attributes.get('_USER')
+            if u is None:
+                continue
+            slate = str(u.get('Slate') or '').strip()
+            take  = str(u.get('Take')  or '').strip()
+            if not slate or not take:
+                continue
+            try:
+                key = f"{int(slate):03d}-{int(take):02d}"
+            except ValueError:
+                continue
+            info = clip_data.get(key)
+            if not info:
+                continue
+            matched += 1
+
+            if write_notes and info.get("take_notes"):
+                if "Comment" in u:
+                    u["Comment"] = info["take_notes"]
+                else:
+                    missing_cols.add("Comment")
+
+            if write_rating and info.get("stars"):
+                try:
+                    n = int(info["stars"])
+                    if star_format == "sterren":
+                        val = "*" * n
+                    elif star_format == "letters":
+                        val = ("A", "B", "C", "D", "E", "")[max(0, min(5 - n, 5))]
+                    else:
+                        val = str(n)
+                except (ValueError, TypeError):
+                    val = info["stars"]
+                for col in ("Rating", "Stars"):
+                    if col in u:
+                        u[col] = val
+                    else:
+                        missing_cols.add(col)
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        f.write(str(out_path))
+
+    log(f"AVB verwerkt: {matched} clip(s) gematcht op Scene/Slate/Take", "info")
+    for col in sorted(missing_cols):
+        log(f"Let op: kolom '{col}' bestaat niet in deze bin — genegeerd.", "warn")
+    return matched
+
+
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # macOS 26+ COMPATIBILITY PATCH
 # NSMenuItem initWithTitle:action:keyEquivalent: rejects empty string titles.
@@ -4309,7 +4374,7 @@ rm -rf "$STAGE"
                  relief="flat", font=(UI_FONT, 11),
                  highlightthickness=1, highlightbackground=BORDER,
                  highlightcolor=AVID_B).pack(side="left", ipady=3, padx=(4, 0))
-        tk.Label(r4b, text=".ALE", bg=BG, fg=MUTED,
+        tk.Label(r4b, text=".ALE / .avb", bg=BG, fg=MUTED,
                  font=(UI_FONT, 10)).pack(side="left", padx=(4, 0))
 
         # Map met resultaat openen na verwerken
@@ -4592,10 +4657,11 @@ rm -rf "$STAGE"
                             app_ref.pdf_paths.append(filepath)
                             app_ref._log_direct(f"PDF:  {p.name}", "info")
                             pdf_added = True
-                    elif ext in (".ale", ".txt"):
+                    elif ext in (".ale", ".txt", ".avb"):
                         if filepath not in app_ref.ale_paths:
                             app_ref.ale_paths.append(filepath)
-                            app_ref._log_direct(f"ALE:  {p.name}", "info")
+                            label = "AVB:  " if ext == ".avb" else "ALE:  "
+                            app_ref._log_direct(f"{label}{p.name}", "info")
                             ale_added = True
                     else:
                         app_ref._log_direct(f"Onbekend bestandstype: {p.name}", "info")
@@ -5198,8 +5264,9 @@ rm -rf "$STAGE"
                     bc = tk.Canvas(row, width=32, height=18, bg=SURFACE,
                                    bd=0, highlightthickness=0)
                     bc.pack(side="left", padx=(10, 6), pady=10)
+                    _row_badge = "AVB" if (file_type == "ALE" and Path(p).suffix.lower() == ".avb") else file_type
                     bc.create_rectangle(0, 0, 32, 18, fill=badge_color, outline="")
-                    bc.create_text(16, 9, text=file_type,
+                    bc.create_text(16, 9, text=_row_badge,
                                    fill="white", font=(UI_FONT, 8, "bold"))
 
                     # Bestandsnaam
@@ -5374,6 +5441,23 @@ rm -rf "$STAGE"
             out_paths = []
 
             for ale_p in self.ale_paths:
+                if Path(ale_p).suffix.lower() == ".avb":
+                    stem    = Path(ale_p).stem
+                    out_dir = Path(_out_dir) if _out_dir else Path(ale_p).parent
+                    out     = out_dir / f"{stem}{_out_suffix}.avb"
+                    try:
+                        out_dir.mkdir(parents=True, exist_ok=True)
+                        process_avb(Path(ale_p), out, all_clips, self.log,
+                                    write_rating=self.write_rating.get(),
+                                    write_notes=self.write_notes.get(),
+                                    star_format=self.star_format.get())
+                    except Exception as _e:
+                        self.log(f"Fout bij AVB '{Path(ale_p).name}': {_e}", "err")
+                        continue
+                    out_paths.append(out)
+                    self.log(t("log_saved", name=out.name), "ok")
+                    continue
+
                 result, src_encoding = process_ale(ale_p, all_clips, self.log,
                                      write_rating=self.write_rating.get(),
                                      notes_col=(self.notes_col.get()
