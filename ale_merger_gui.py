@@ -1119,6 +1119,8 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
             None if pu_col in ("Auto", None) else pu_col)
         if _pu_col_name is None and pu_col not in ("Uit", ""):
             pu_idx = take_notes_idx
+        elif _pu_col_name == "Name":
+            pu_idx = name_idx
         elif _pu_col_name:
             if _pu_col_name not in col_headers:
                 col_headers.append(_pu_col_name)
@@ -1142,6 +1144,8 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
             None if afg_col in ("Auto", None) else afg_col)
         if _afg_col_name is None and afg_col not in ("Uit", ""):
             afg_idx = take_notes_idx
+        elif _afg_col_name == "Name":
+            afg_idx = name_idx
         elif _afg_col_name:
             if _afg_col_name not in col_headers:
                 col_headers.append(_afg_col_name)
@@ -4389,7 +4393,7 @@ rm -rf "$STAGE"
         _star_cb.bind("<<ComboboxSelected>>", _on_star_fmt)
 
         # PU: checkbox + "→" + kolom-dropdown + voor/achter
-        PU_COLS = ["Auto", "Comment", "Comments", "Notes", "Take_Notes"]
+        PU_COLS = ["Auto", "Name", "Comment", "Comments", "Notes", "Take_Notes"]
         r5 = _row(t("prefs_write_pu"))
         tk.Checkbutton(r5, variable=self.write_pu_in_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
@@ -4429,7 +4433,7 @@ rm -rf "$STAGE"
         _pu_kn_entry.pack(side="left")
 
         # AFG: checkbox + "→" + kolom-dropdown + voor/achter
-        AFG_COLS = ["Auto", "Comment", "Comments", "Notes", "Take_Notes"]
+        AFG_COLS = ["Auto", "Name", "Comment", "Comments", "Notes", "Take_Notes"]
         r6 = _row(t("prefs_write_afg"))
         tk.Checkbutton(r6, variable=self.write_afg_in_notes,
                        bg=BG, fg=TEXT, selectcolor=SURFACE2,
