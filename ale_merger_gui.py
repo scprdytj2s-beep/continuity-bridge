@@ -967,6 +967,7 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
                 pu_col="Auto", pu_position="voor",
                 pu_eigen_kolom=False, pu_eigen_kolom_naam="PU",
                 afg_col="Auto", afg_position="voor",
+                afg_eigen_kolom=False, afg_eigen_kolom_naam="AFG",
                 general_notes_col="Auto", star_format="sterren",
                 scene_col="Auto", resolutions=None):
     resolutions = resolutions or {}
@@ -1152,6 +1153,15 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
                 log(f"Kolom '{_afg_col_name}' toegevoegd aan ALE (AFG).", "info")
             afg_idx = col_headers.index(_afg_col_name)
 
+    # AFG eigen kolom (aparte kolom met alleen "AFG" als waarde)
+    afg_eigen_idx = None
+    if afg_eigen_kolom and afg_eigen_kolom_naam:
+        _afg_ek = afg_eigen_kolom_naam.strip() or "AFG"
+        if _afg_ek not in col_headers:
+            col_headers.append(_afg_ek)
+            log(f"Kolom '{_afg_ek}' toegevoegd aan ALE (AFG markering).", "info")
+        afg_eigen_idx = col_headers.index(_afg_ek)
+
     # Algemene opmerkingen-kolom (Haantjes Comment-veld onderaan pagina)
     gen_notes_idx = None
     has_gen = any(d.get("page_note") for d in clip_data.values())
@@ -1307,6 +1317,9 @@ def process_ale(ale_path, clip_data, log, write_rating=True, notes_col="Auto", r
             # PU eigen kolom — schrijf gewoon "PU" (geen tekst, geen positie)
             if info.get("is_pu") and pu_eigen_idx is not None:
                 parts[pu_eigen_idx] = "PU"
+            # AFG eigen kolom — schrijf gewoon "AFG" (geen tekst, geen positie)
+            if info.get("is_afg") and afg_eigen_idx is not None:
+                parts[afg_eigen_idx] = "AFG"
         parts = [p.replace("\t", " ").replace("\r", " ").replace("\n", " ") for p in parts]
         new_data_lines.append(parts)  # bewaar als list; joinen gebeurt hieronder
 
@@ -1648,6 +1661,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_pu_own_col":        "PU in eigen kolom",
         "prefs_pu_col_name":       "Kolomnaam",
         "prefs_write_afg":         "Schrijf (AFG)",
+        "prefs_afg_own_col":       "AFG in eigen kolom",
         "prefs_position":          "positie:",
         "prefs_pos_before":        "voor",
         "prefs_pos_after":         "achter",
@@ -1895,6 +1909,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_pu_own_col":        "PU in separate column",
         "prefs_pu_col_name":       "Column name",
         "prefs_write_afg":         "Write (AFG)",
+        "prefs_afg_own_col":       "AFG in separate column",
         "prefs_position":          "position:",
         "prefs_pos_before":        "before",
         "prefs_pos_after":         "after",
@@ -2142,6 +2157,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prefs_pu_own_col":        "PU in eigener Spalte",
         "prefs_pu_col_name":       "Spaltenname",
         "prefs_write_afg":         "Schreibe (AFG)",
+        "prefs_afg_own_col":       "AFG in eigener Spalte",
         "prefs_position":          "Position:",
         "prefs_pos_before":        "vor",
         "prefs_pos_after":         "nach",
@@ -2751,6 +2767,8 @@ _PREFS_DEFAULTS = {
     "pu_eigen_kolom_naam": "PU",
     "afg_col":            "Auto",
     "afg_position":       "voor",
+    "afg_eigen_kolom":    False,
+    "afg_eigen_kolom_naam": "AFG",
     "write_general_notes": False,
     "general_notes_col":  "Camera_Notes",
     "write_scene":        True,
@@ -2924,6 +2942,8 @@ class App:
         self.pu_eigen_kolom_naam = tk.StringVar(value=_p.get("pu_eigen_kolom_naam", "PU"))
         self.afg_col            = tk.StringVar(value=_p.get("afg_col", "Auto"))
         self.afg_position       = tk.StringVar(value=_p.get("afg_position", "voor"))
+        self.afg_eigen_kolom    = tk.BooleanVar(value=_p.get("afg_eigen_kolom", False))
+        self.afg_eigen_kolom_naam = tk.StringVar(value=_p.get("afg_eigen_kolom_naam", "AFG"))
         self.write_general_notes = tk.BooleanVar(value=_p.get("write_general_notes", False))
         self.general_notes_col  = tk.StringVar(value=_p.get("general_notes_col", "Camera_Notes"))
         self.write_scene        = tk.BooleanVar(value=_p.get("write_scene", True))
@@ -2962,6 +2982,8 @@ class App:
                 "pu_eigen_kolom_naam": self.pu_eigen_kolom_naam.get(),
                 "afg_col":            self.afg_col.get(),
                 "afg_position":       self.afg_position.get(),
+                "afg_eigen_kolom":     self.afg_eigen_kolom.get(),
+                "afg_eigen_kolom_naam": self.afg_eigen_kolom_naam.get(),
                 "write_general_notes": self.write_general_notes.get(),
                 "general_notes_col":  self.general_notes_col.get(),
                 "write_scene":        self.write_scene.get(),
@@ -3002,6 +3024,8 @@ class App:
         self.pu_eigen_kolom_naam.trace_add("write", _on_pref_change)
         self.afg_col           .trace_add("write", _on_pref_change)
         self.afg_position      .trace_add("write", _on_pref_change)
+        self.afg_eigen_kolom   .trace_add("write", _on_pref_change)
+        self.afg_eigen_kolom_naam.trace_add("write", _on_pref_change)
         self.write_general_notes.trace_add("write", _on_pref_change)
         self.general_notes_col .trace_add("write", _on_pref_change)
         self.write_scene       .trace_add("write", _on_pref_change)
@@ -4454,6 +4478,21 @@ rm -rf "$STAGE"
             self.afg_position.set(_POS_TO_CODE.get(_afg_pos_display.get(), "voor"))
         _afg_pos_cb.bind("<<ComboboxSelected>>", _on_afg_pos)
 
+        # AFG eigen kolom: checkbox + kolomnaam entry
+        r6b = _row(t("prefs_afg_own_col"))
+        tk.Checkbutton(r6b, variable=self.afg_eigen_kolom,
+                       bg=BG, fg=TEXT, selectcolor=SURFACE2,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=(UI_FONT, 11), relief="flat", bd=0).pack(side="left")
+        tk.Label(r6b, text="→", bg=BG, fg=MUTED,
+                 font=(UI_FONT, 11)).pack(side="left", padx=(4, 6))
+        tk.Label(r6b, text=t("prefs_pu_col_name") + ":", bg=BG, fg=MUTED,
+                 font=(UI_FONT, 10)).pack(side="left", padx=(0, 4))
+        _afg_kn_entry = tk.Entry(r6b, textvariable=self.afg_eigen_kolom_naam,
+                                width=10, bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
+                                relief="flat", font=(UI_FONT, 11))
+        _afg_kn_entry.pack(side="left")
+
         def _row2(label):
             f = tk.Frame(_sec[0], bg=BG, height=ROW)
             f.pack(fill="x", pady=3)
@@ -5757,6 +5796,8 @@ rm -rf "$STAGE"
                                      afg_col=(self.afg_col.get()
                                               if self.write_afg_in_notes.get() else "Uit"),
                                      afg_position=self.afg_position.get(),
+                                     afg_eigen_kolom=self.afg_eigen_kolom.get(),
+                                     afg_eigen_kolom_naam=self.afg_eigen_kolom_naam.get(),
                                      general_notes_col=(self.general_notes_col.get()
                                                         if self.write_general_notes.get() else "Uit"),
                                      star_format=self.star_format.get(),
