@@ -5,9 +5,41 @@
 
 const RELEASES = [
   {
-    version: 'v1.4.1',
+    version: 'v1.5.0',
     date: { nl: '28 oktober 2026', en: '28 October 2026', de: '28. Oktober 2026' },
     latest: true,
+    title: {
+      nl: 'Beter beveiligde licenties',
+      en: 'Better protected licenses',
+      de: 'Besser geschützte Lizenzen',
+    },
+    groups: [
+      {
+        kind: 'improve',
+        items: [
+          {
+            nl: '<strong>Licenties zijn beter beveiligd</strong> tegen misbruik — de app bevestigt je licentie eenmalig online bij het activeren, daarna werkt alles weer volledig offline',
+            en: '<strong>Licenses are better protected</strong> against misuse — the app confirms your license online once when you activate, after that everything works fully offline again',
+            de: '<strong>Lizenzen sind besser geschützt</strong> gegen Missbrauch — die App bestätigt deine Lizenz beim Aktivieren einmalig online, danach funktioniert alles wieder vollständig offline',
+          },
+          {
+            nl: 'Heb je al een licentie? Die wordt na de update <strong>automatisch</strong> bevestigd zodra je internet hebt — je hoeft niets opnieuw in te voeren',
+            en: 'Already have a license? It is confirmed <strong>automatically</strong> after the update as soon as you are online — no need to enter anything again',
+            de: 'Du hast schon eine Lizenz? Sie wird nach dem Update <strong>automatisch</strong> bestätigt, sobald du online bist — du musst nichts neu eingeben',
+          },
+          {
+            nl: 'Geen internet bij het activeren? Dan kun je gewoon <strong>14 dagen</strong> verder werken; de app bevestigt de licentie vanzelf zodra er weer verbinding is',
+            en: 'No internet when activating? You can simply keep working for <strong>14 days</strong>; the app confirms the license by itself once you are back online',
+            de: 'Kein Internet beim Aktivieren? Dann kannst du einfach <strong>14 Tage</strong> weiterarbeiten; die App bestätigt die Lizenz von selbst, sobald wieder eine Verbindung besteht',
+          },
+        ],
+      },
+    ],
+  },
+
+  {
+    version: 'v1.4.1',
+    date: { nl: '28 oktober 2026', en: '28 October 2026', de: '28. Oktober 2026' },
     title: {
       nl: 'Beveiligingsupdate',
       en: 'Security update',
