@@ -1744,6 +1744,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "lic_name_mismatch":       "✗ Naam komt niet overeen met licentie.",
         "lic_already_bound":       "✗ Serial al geactiveerd op een andere machine.\nNeem contact op met support@studiomichielboesveldt.nl",
         "lic_revoked_server":      "✗ Deze licentie is ingetrokken.\nNeem contact op met support@studiomichielboesveldt.nl",
+        "lic_not_recognized":      "✗ Dit serienummer wordt niet (meer) herkend.\nNeem contact op met support@studiomichielboesveldt.nl",
+        "lic_expired_server":      "✗ Deze licentie is verlopen.",
+        "lic_invalid_server":      "✗ Ongeldig serienummer.\nControleer de invoer of neem contact op met support@studiomichielboesveldt.nl",
+        "lic_pending_status":      "Nog niet online bevestigd (nog {n} dagen)",
+        "lic_grace_over":          "Licentie kon niet online worden bevestigd.\nMaak verbinding met internet en activeer opnieuw.",
+        "lic_token_invalid":       "Ongeldige activatie. Activeer opnieuw.",
         "lic_removed_msg":         "Licentie verwijderd. Voer een nieuw serienummer in.",
         "lic_remove_confirm":      "Licentie verwijderen van deze Mac?\n\nJe moet daarna een nieuw serienummer invoeren.",
         "lic_ask_new_serial":      "Nieuw serienummer invoeren?",
@@ -1997,6 +2003,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "lic_name_mismatch":       "✗ Name does not match the license.",
         "lic_already_bound":       "✗ Serial already activated on another machine.\nContact support@studiomichielboesveldt.nl",
         "lic_revoked_server":      "✗ This license has been revoked.\nContact support@studiomichielboesveldt.nl",
+        "lic_not_recognized":      "✗ This serial number is not (or no longer) recognised.\nContact support@studiomichielboesveldt.nl",
+        "lic_expired_server":      "✗ This license has expired.",
+        "lic_invalid_server":      "✗ Invalid serial number.\nCheck your input or contact support@studiomichielboesveldt.nl",
+        "lic_pending_status":      "Not yet confirmed online ({n} days left)",
+        "lic_grace_over":          "The license could not be confirmed online.\nConnect to the internet and activate again.",
+        "lic_token_invalid":       "Invalid activation. Please activate again.",
         "lic_removed_msg":         "License removed. Enter a new serial number.",
         "lic_remove_confirm":      "Remove license from this Mac?\n\nYou will need to enter a new serial number afterwards.",
         "lic_ask_new_serial":      "Enter new serial number?",
@@ -2250,6 +2262,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "lic_name_mismatch":       "✗ Name stimmt nicht mit der Lizenz überein.",
         "lic_already_bound":       "✗ Seriennummer bereits auf einem anderen Gerät aktiviert.\nKontaktiere support@studiomichielboesveldt.nl",
         "lic_revoked_server":      "✗ Diese Lizenz wurde widerrufen.\nKontaktiere support@studiomichielboesveldt.nl",
+        "lic_not_recognized":      "✗ Diese Seriennummer wird nicht (mehr) erkannt.\nKontaktiere support@studiomichielboesveldt.nl",
+        "lic_expired_server":      "✗ Diese Lizenz ist abgelaufen.",
+        "lic_invalid_server":      "✗ Ungültige Seriennummer.\nPrüfe die Eingabe oder kontaktiere support@studiomichielboesveldt.nl",
+        "lic_pending_status":      "Noch nicht online bestätigt (noch {n} Tage)",
+        "lic_grace_over":          "Die Lizenz konnte nicht online bestätigt werden.\nVerbinde dich mit dem Internet und aktiviere erneut.",
+        "lic_token_invalid":       "Ungültige Aktivierung. Bitte erneut aktivieren.",
         "lic_removed_msg":         "Lizenz entfernt. Gib eine neue Seriennummer ein.",
         "lic_remove_confirm":      "Lizenz von diesem Mac entfernen?\n\nDu musst danach eine neue Seriennummer eingeben.",
         "lic_ask_new_serial":      "Neue Seriennummer eingeben?",
@@ -2413,15 +2431,28 @@ def _write_private(path: Path, text: str):
 #   bytes 0-1  : vervaldatum (uint16, dagen sinds 2024-01-01)
 #   bytes 2-9  : naam (UTF-8, null-padded tot 8 bytes, max 8 tekens)
 #   bytes 10-14: HMAC-SHA256 eerste 5 bytes  → totaal 15 bytes
+# De HMAC-sleutel staat alleen op de server (api/activate.js); de app kan een
+# serial dus niet zelf echt verklaren. Bij activatie geeft de server een
+# activatietoken terug, getekend met Ed25519, dat de app offline controleert met
+# de publieke sleutel hieronder. Token = 'cbt1.' + b64url(JSON) + '.' + b64url(sig).
+# Server onbereikbaar → proefperiode van _LIC_GRACE_DAYS dagen (fail open);
+# de app probeert ondertussen op de achtergrond alsnog te activeren.
 # ---------------------------------------------------------------------------
-import hmac as _hmac, hashlib as _hashlib, struct as _struct
+import hashlib as _hashlib, struct as _struct
 import base64 as _b64, json as _json
 from datetime import date as _date, timedelta as _td
 
-_LIC_KEY    = b'CB2026-ContBridge-HMAC-S3cr3t-K3y'
-_LIC_EPOCH  = _date(2024, 1, 1)
-_LIC_DIR    = Path.home() / ".continuitybridge"
-_LIC_FILE   = _LIC_DIR / "license"
+# Publieke sleutel bij LIC_SIGNING_KEY in Vercel (tools/license-admin.js pubkey)
+_LIC_PUBKEY = bytes.fromhex(
+    "fe595a31b05b336baafc19bc92e19a9d758cb21a228826e8db3dc4c3ee5c0799")
+_LIC_GRACE_DAYS   = 14
+_LIC_EPOCH        = _date(2024, 1, 1)
+_LIC_DIR          = Path.home() / ".continuitybridge"
+_LIC_FILE         = _LIC_DIR / "license"
+# CB_ACTIVATE_URL: alleen voor tests met een lokale server. Ongevaarlijk: een
+# andere server kan geen tokens maken die _token_verify accepteert.
+_LIC_ACTIVATE_URL = (os.environ.get("CB_ACTIVATE_URL")
+                     or "https://studiomichielboesveldt.nl/api/activate")
 _REVOKE_URL = (f"https://raw.githubusercontent.com/"
                f"scprdytj2s-beep/continuity-bridge/main/revoked.json")
 
@@ -2429,36 +2460,100 @@ _REVOKE_URL = (f"https://raw.githubusercontent.com/"
 _revoked_serials: set = set()
 
 
-def _serial_generate(name: str, expiry: _date) -> str:
-    """Genereer serial met naam + vervaldatum."""
-    name_b  = name.encode('utf-8')[:8].ljust(8, b'\x00')
-    days    = (expiry - _LIC_EPOCH).days
-    payload = _struct.pack('>H', days) + name_b          # 10 bytes
-    sig     = _hmac.new(_LIC_KEY, payload, _hashlib.sha256).digest()[:5]
-    b32     = _b64.b32encode(payload + sig).decode()     # 24 chars, geen padding
-    return f"CB-{b32[:4]}-{b32[4:8]}-{b32[8:12]}-{b32[12:16]}-{b32[16:20]}-{b32[20:]}"
+# ── Ed25519-verificatie (RFC 8032, §5.1.7) ──────────────────────────────────
+# Puur Python zodat er niets extra's gebundeld hoeft te worden in de
+# PyInstaller-builds. Alleen verifiëren: alle invoer is publiek, constante
+# tijd is dus niet nodig.
+_ED_P = 2**255 - 19
+_ED_L = 2**252 + 27742317777372353535851937790883648493
+_ED_D = -121665 * pow(121666, _ED_P - 2, _ED_P) % _ED_P
+_ED_SQRT_M1 = pow(2, (_ED_P - 1) // 4, _ED_P)
 
 
-def _serial_verify(serial: str):
-    """Verifieer serial.
+def _ed_add(P, Q):
+    x1, y1, z1, t1 = P
+    x2, y2, z2, t2 = Q
+    a = (y1 - x1) * (y2 - x2) % _ED_P
+    b = (y1 + x1) * (y2 + x2) % _ED_P
+    c = 2 * t1 * t2 * _ED_D % _ED_P
+    d = 2 * z1 * z2 % _ED_P
+    e, f, g, h = b - a, d - c, d + c, b + a
+    return (e * f % _ED_P, g * h % _ED_P, f * g % _ED_P, e * h % _ED_P)
+
+
+def _ed_mul(s, P):
+    Q = (0, 1, 1, 0)
+    while s:
+        if s & 1:
+            Q = _ed_add(Q, P)
+        P = _ed_add(P, P)
+        s >>= 1
+    return Q
+
+
+def _ed_equal(P, Q):
+    x1, y1, z1, _ = P
+    x2, y2, z2, _ = Q
+    return (x1 * z2 - x2 * z1) % _ED_P == 0 and (y1 * z2 - y2 * z1) % _ED_P == 0
+
+
+def _ed_recover_x(y, sign):
+    if y >= _ED_P:
+        return None
+    x2 = (y * y - 1) * pow(_ED_D * y * y + 1, _ED_P - 2, _ED_P) % _ED_P
+    if x2 == 0:
+        return None if sign else 0
+    x = pow(x2, (_ED_P + 3) // 8, _ED_P)
+    if (x * x - x2) % _ED_P:
+        x = x * _ED_SQRT_M1 % _ED_P
+    if (x * x - x2) % _ED_P:
+        return None
+    if (x & 1) != sign:
+        x = _ED_P - x
+    return x
+
+
+def _ed_decompress(b):
+    y = int.from_bytes(b, "little")
+    sign, y = y >> 255, y & ((1 << 255) - 1)
+    x = _ed_recover_x(y, sign)
+    return None if x is None else (x, y, 1, x * y % _ED_P)
+
+
+_ED_G = _ed_decompress((4 * pow(5, _ED_P - 2, _ED_P) % _ED_P).to_bytes(32, "little"))
+
+
+def _ed25519_verify(pub: bytes, msg: bytes, sig: bytes) -> bool:
+    if len(pub) != 32 or len(sig) != 64:
+        return False
+    A = _ed_decompress(pub)
+    R = _ed_decompress(sig[:32])
+    s = int.from_bytes(sig[32:], "little")
+    if A is None or R is None or s >= _ED_L:
+        return False
+    h = int.from_bytes(_hashlib.sha512(sig[:32] + pub + msg).digest(), "little") % _ED_L
+    return _ed_equal(_ed_mul(s, _ED_G), _ed_add(R, _ed_mul(h, A)))
+
+
+# ── Serials & tokens ─────────────────────────────────────────────────────────
+def _serial_core(serial: str) -> str:
+    """24 base32-tekens zonder 'CB'-prefix, streepjes of spaties."""
+    clean = (serial or "").upper().replace('-', '').replace(' ', '')
+    return clean[2:] if clean.startswith('CB') else clean
+
+
+def _serial_decode(serial: str):
+    """Lees naam en vervaldatum uit een serial. Controleert alleen het formaat —
+    echtheid stelt de server vast (zie _activate_online / _token_verify).
     Returns (ok: bool, expiry: date|None, name: str, msg: str)."""
-    clean = serial.upper().replace('-', '').replace(' ', '')
-    if clean.startswith('CB'):
-        clean = clean[2:]
     try:
+        clean = _serial_core(serial)
         if len(clean) != 24:
             return False, None, "", "Ongeldig formaat."
         raw  = _b64.b32decode(clean)                     # 15 bytes
         days = _struct.unpack('>H', raw[:2])[0]
         name = raw[2:10].rstrip(b'\x00').decode('utf-8', errors='replace')
-        sig_stored   = raw[10:15]
-        sig_expected = _hmac.new(_LIC_KEY, raw[:10], _hashlib.sha256).digest()[:5]
-        if not _hmac.compare_digest(sig_stored, sig_expected):
-            return False, None, name, "Ongeldige licentiesleutel."
         expiry = _LIC_EPOCH + _td(days=days)
-        norm   = serial.upper().replace(' ', '')
-        if norm in _revoked_serials:
-            return False, expiry, name, "Licentie ingetrokken."
         if _date.today() >= expiry:
             return False, expiry, name, f"Verlopen op {expiry.strftime('%d-%m-%Y')}."
         return True, expiry, name, f"Geldig t/m {expiry.strftime('%d-%m-%Y')}"
@@ -2466,16 +2561,98 @@ def _serial_verify(serial: str):
         return False, None, "", "Ongeldig serienummer."
 
 
-def _serial_verify_with_machine(serial: str, stored_machine_id: str):
-    """Verifieer serial én machine-binding."""
-    ok, expiry, name, msg = _serial_verify(serial)
+def _token_verify(token: str):
+    """Controleer een activatietoken. Returns claims-dict of None."""
+    try:
+        signed, sig_b64 = token.rsplit('.', 1)
+        prefix, body = signed.split('.')
+        if prefix != 'cbt1':
+            return None
+        unb64 = lambda s: _b64.urlsafe_b64decode(s + '=' * (-len(s) % 4))
+        if not _ed25519_verify(_LIC_PUBKEY, signed.encode('ascii'), unb64(sig_b64)):
+            return None
+        claims = _json.loads(unb64(body))
+        return claims if isinstance(claims, dict) and claims.get('v') == 1 else None
+    except Exception:
+        return None
+
+
+def _license_check(lic: dict):
+    """Controleer de opgeslagen licentie (zie _license_load).
+    Returns (ok, expiry, name, msg, needs_online) — needs_online=True betekent:
+    nog in de proefperiode, (opnieuw) proberen online te activeren."""
+    serial = lic.get('serial') or ''
+    if not serial:
+        return False, None, "", "Geen licentie.", False
+    ok, expiry, name, msg = _serial_decode(serial)
     if not ok:
-        return False, expiry, name, msg
-    current_uuid = _machine_uuid()
-    if stored_machine_id and stored_machine_id != "UNKNOWN" \
-            and stored_machine_id != current_uuid:
-        return False, expiry, name, "Licentie gebonden aan andere Mac."
-    return True, expiry, name, msg
+        return False, expiry, name, msg, False
+    if _serial_core(serial) in _revoked_serials:
+        return False, expiry, name, "Licentie ingetrokken.", False
+
+    token = lic.get('token')
+    if token:
+        claims = _token_verify(token)
+        if not claims or _serial_core(claims.get('serial', '')) != _serial_core(serial):
+            return False, None, name, t("lic_token_invalid"), False
+        if claims.get('mid') != _machine_uuid():
+            return False, expiry, name, "Licentie gebonden aan andere Mac.", False
+        expiry = _date.fromisoformat(claims['exp'])
+        if _date.today() >= expiry:
+            return False, expiry, name, f"Verlopen op {expiry.strftime('%d-%m-%Y')}.", False
+        return True, expiry, name, f"Geldig t/m {expiry.strftime('%d-%m-%Y')}", False
+
+    # Nog geen token: proefperiode (server was onbereikbaar, of een licentie
+    # van vóór de activatietokens)
+    mid = lic.get('machine_id')
+    if mid and mid != "UNKNOWN" and mid != _machine_uuid():
+        return False, expiry, name, "Licentie gebonden aan andere Mac.", False
+    try:
+        since = _date.fromisoformat(lic.get('pending_since') or '')
+    except ValueError:
+        since = _date.today()
+    days_left = _LIC_GRACE_DAYS - (_date.today() - since).days
+    if days_left <= 0:
+        return False, expiry, name, t("lic_grace_over"), False
+    return True, expiry, name, t("lic_pending_status", n=days_left), True
+
+
+def _activate_online(serial: str):
+    """Activeer bij de server. Returns ('ok', token) | ('rejected', reason) |
+    ('offline', None) — offline = geen verbinding of storing → proefperiode."""
+    import urllib.request as _ur, urllib.error as _ue
+    try:
+        req = _ur.Request(
+            _LIC_ACTIVATE_URL,
+            data=_json.dumps({"serial": serial.strip(),
+                              "machine_uuid": _machine_uuid()}).encode(),
+            headers={"Content-Type": "application/json",
+                     "User-Agent": "ContinuityBridge"},
+            method="POST",
+        )
+        with _ur.urlopen(req, timeout=8, context=_https_context()) as r:
+            result = _json.loads(r.read())
+    except Exception:
+        # Geen internet, server onbereikbaar of 5xx/429 → fail open
+        return 'offline', None
+    if not result.get('ok'):
+        reason = result.get('reason') or 'ongeldig'
+        return ('offline', None) if reason == 'server_config' else ('rejected', reason)
+    token  = result.get('token') or ''
+    claims = _token_verify(token)
+    if not claims or _serial_core(claims.get('serial', '')) != _serial_core(serial) \
+            or claims.get('mid') != _machine_uuid():
+        return 'offline', None   # bv. oude server zonder tokens
+    return 'ok', token
+
+
+def _activation_reject_msg(reason: str) -> str:
+    return {
+        'al_gebonden': t("lic_already_bound"),
+        'ingetrokken': t("lic_revoked_server"),
+        'niet_erkend': t("lic_not_recognized"),
+        'verlopen':    t("lic_expired_server"),
+    }.get(reason, t("lic_invalid_server"))
 
 
 def _fetch_revoked_list():
@@ -2490,7 +2667,7 @@ def _fetch_revoked_list():
             db = _json.loads(_local_lic_db.read_text())
             for entry in db:
                 if entry.get('revoked'):
-                    combined.add(entry['serial'].upper().replace(' ', ''))
+                    combined.add(_serial_core(entry['serial']))
     except Exception:
         pass
 
@@ -2504,7 +2681,7 @@ def _fetch_revoked_list():
         with urllib.request.urlopen(req, timeout=5, context=_https_context()) as r:
             data = _json.loads(r.read())
         for s in data:
-            combined.add(s.upper().replace(' ', ''))
+            combined.add(_serial_core(s))
     except Exception:
         pass   # geen internet / bestand bestaat nog niet
 
@@ -2536,20 +2713,22 @@ def _machine_uuid() -> str:
     return "UNKNOWN"
 
 
-def _license_load():
-    """Returns (serial, machine_id) of (None, None)."""
+def _license_load() -> dict:
+    """Returns {'serial', 'machine_id', 'token' | 'pending_since'} of {}."""
     try:
         data = _json.loads(_LIC_FILE.read_text())
-        return data.get('serial', ''), data.get('machine_id', '')
+        return data if isinstance(data, dict) else {}
     except Exception:
-        return None, None
+        return {}
 
 
-def _license_save(serial: str):
-    _write_private(_LIC_FILE, _json.dumps({
-        'serial':     serial.strip(),
-        'machine_id': _machine_uuid()
-    }))
+def _license_save(serial: str, token: str = None, pending_since: str = None):
+    data = {'serial': serial.strip(), 'machine_id': _machine_uuid()}
+    if token:
+        data['token'] = token
+    else:
+        data['pending_since'] = pending_since or _date.today().isoformat()
+    _write_private(_LIC_FILE, _json.dumps(data))
 
 
 def _license_delete():
@@ -3624,7 +3803,8 @@ echo "open exit=$? — klaar" >> "$LOG"
             status_lbl.pack(pady=(8, 0))
 
             def _activate():
-                ok, expiry, serial_name, msg = _serial_verify(serial_var.get())
+                serial = serial_var.get().strip()
+                ok, expiry, serial_name, msg = _serial_decode(serial)
                 if not ok:
                     status_lbl.config(fg=ERROR, text=f"✗ {msg}")
                     return
@@ -3635,43 +3815,27 @@ echo "open exit=$? — klaar" >> "$LOG"
                 if entered_trunc.lower() != serial_name.lower():
                     status_lbl.config(fg=ERROR, text=t("lic_name_mismatch"))
                     return
-                # Server-side activatiecheck
+                # De server stelt vast of de serial echt is en geeft een token
                 status_lbl.config(fg=MUTED, text=t("lic_verify_msg"))
                 _act_cv.config(state="disabled")
                 def _do_server_check():
-                    try:
-                        import urllib.request as _ur, json as _js
-                        payload = _js.dumps({
-                            "serial":       serial_var.get().strip(),
-                            "machine_uuid": _machine_uuid(),
-                        }).encode()
-                        req = _ur.Request(
-                            "https://studiomichielboesveldt.nl/api/activate",
-                            data=payload,
-                            headers={"Content-Type": "application/json",
-                                     "User-Agent": "ContinuityBridge"},
-                            method="POST",
-                        )
-                        with _ur.urlopen(req, timeout=8, context=_https_context()) as r:
-                            result = _js.loads(r.read())
-                        server_ok     = result.get("ok", True)
-                        server_reason = result.get("reason", "")
-                    except Exception:
-                        # Geen internet of server onbereikbaar → fail open
-                        server_ok, server_reason = True, ""
+                    result, data = _activate_online(serial)
                     def _finish():
                         _act_cv.config(state="normal")
-                        if not server_ok and server_reason == "al_gebonden":
-                            status_lbl.config(fg=ERROR, text=t("lic_already_bound"))
+                        if result == 'rejected':
+                            status_lbl.config(fg=ERROR, text=_activation_reject_msg(data))
                             return
-                        if not server_ok and server_reason == "ingetrokken":
-                            status_lbl.config(fg=ERROR, text=t("lic_revoked_server"))
-                            return
-                        _license_save(serial_var.get())
+                        if result == 'ok':
+                            _license_save(serial, token=data)
+                            status = msg
+                        else:
+                            # Geen verbinding → fail open: proefperiode, later opnieuw
+                            _license_save(serial)
+                            status = t("lic_pending_status", n=_LIC_GRACE_DAYS)
                         self._license_expiry = expiry
                         status_lbl.config(fg=SUCCESS,
-                            text=f"✓ Welkom, {serial_name}!  {msg}")
-                        dlg.after(1000, dlg.destroy)
+                            text=f"✓ Welkom, {serial_name}!  {status}")
+                        dlg.after(1000 if result == 'ok' else 2500, dlg.destroy)
                     dlg.after(0, _finish)
                 threading.Thread(target=_do_server_check, daemon=True).start()
 
@@ -3712,11 +3876,15 @@ echo "open exit=$? — klaar" >> "$LOG"
         def _show_license_info():
             def _do_show():
                 _fetch_revoked_list()   # fetch in thread, max 5s
-                serial, mid = _license_load()
-                if serial:
-                    ok, expiry, name, msg = _serial_verify_with_machine(serial, mid)
-                else:
-                    ok, expiry, name, msg = False, None, "", "Geen licentie."
+                lic = _license_load()
+                serial = lic.get('serial') or ''
+                ok, expiry, name, msg, needs_online = _license_check(lic)
+                if needs_online:
+                    reject = _retry_pending_activation(lic)
+                    if reject:
+                        ok, msg = False, reject
+                    else:
+                        ok, expiry, name, msg, _ = _license_check(_license_load())
                 def _render():
                     if ok:
                         win = tk.Toplevel(self.root)
@@ -3923,7 +4091,7 @@ echo "open exit=$? — klaar" >> "$LOG"
                                 serial_clean = e.get("serial","").upper().replace(" ","")
                                 # bepaal vervaldatum via serial-decode
                                 try:
-                                    _, expiry, _, _ = _serial_verify(e.get("serial",""))
+                                    _, expiry, _, _ = _serial_decode(e.get("serial",""))
                                     exp_str = expiry.strftime("%d-%m-%Y") if expiry else "?"
                                     if e.get("revoked"):
                                         status = t("mgr_status_revoked")
@@ -4004,11 +4172,36 @@ echo "open exit=$? — klaar" >> "$LOG"
         _revoke_done.wait(timeout=3)   # wacht max 3s op fetch
 
         # ── Licenticheck bij opstarten ────────────────────────────────────────
-        serial, mid = _license_load()
-        if serial:
-            ok, expiry, name, msg = _serial_verify_with_machine(serial, mid)
+        def _retry_pending_activation(lic):
+            """Proefperiode: probeer alsnog online te activeren (in een thread
+            aanroepen). Returns de weigeringsmelding, of None (gelukt/offline)."""
+            result, data = _activate_online(lic['serial'])
+            if result == 'ok':
+                _license_save(lic['serial'], token=data)
+            return _activation_reject_msg(data) if result == 'rejected' else None
+
+        def _block_license(msg):
+            _license_delete()
+            self._license_expiry = None
+            _show_license_dialog(message=msg, block=True)
+
+        def _bg_retry_pending(lic):
+            msg = _retry_pending_activation(lic)
+            if msg:
+                self.root.after(0, lambda: _block_license(msg))
+
+        lic = _license_load()
+        if lic.get('serial'):
+            if not lic.get('token') and not lic.get('pending_since'):
+                # Licentie van vóór de activatietokens: proefperiode start nu
+                lic['pending_since'] = _date.today().isoformat()
+                _write_private(_LIC_FILE, _json.dumps(lic))
+            ok, expiry, name, msg, needs_online = _license_check(lic)
             if ok:
                 self._license_expiry = expiry
+                if needs_online:
+                    _threading_mod.Thread(target=_bg_retry_pending,
+                                          args=(lic,), daemon=True).start()
             else:
                 _license_delete()
                 self._license_expiry = None
@@ -4067,16 +4260,16 @@ echo "open exit=$? — klaar" >> "$LOG"
         def _periodic_revoke_check():
             def _do():
                 _fetch_revoked_list()
-                serial, mid = _license_load()
-                if not serial:
+                lic = _license_load()
+                if not lic.get('serial'):
                     return
-                ok, expiry, name, msg = _serial_verify_with_machine(serial, mid)
+                ok, expiry, name, msg, needs_online = _license_check(lic)
+                if ok and needs_online:
+                    reject = _retry_pending_activation(lic)
+                    if reject:
+                        ok, msg = False, reject
                 if not ok:
-                    def _block():
-                        _license_delete()
-                        self._license_expiry = None
-                        _show_license_dialog(message=msg, block=True)
-                    self.root.after(0, _block)
+                    self.root.after(0, lambda: _block_license(msg))
             _threading_mod.Thread(target=_do, daemon=True).start()
             self.root.after(5 * 60 * 1000, _periodic_revoke_check)   # elke 5 min
 

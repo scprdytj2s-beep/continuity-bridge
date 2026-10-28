@@ -3,48 +3,10 @@
 
 const { createMollieClient } = require('@mollie/api-client');
 const { Resend } = require('resend');
-const crypto = require('crypto');
 const {
-  escapeHtml, cleanLine, isEmail, readJsonFile, writeJsonFile, privateRepo,
+  escapeHtml, cleanLine, isEmail, issueSerial, signingSeed,
+  readJsonFile, writeJsonFile, privateRepo,
 } = require('../lib/security');
-
-// ── Serial generation ────────────────────────────────────────────────────────
-const LIC_EPOCH = new Date('2024-01-01T00:00:00Z');
-const B32_ALPHA  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-
-function base32encode(buf) {
-  let bits = 0, value = 0, output = '';
-  for (const byte of buf) {
-    value = (value << 8) | byte;
-    bits += 8;
-    while (bits >= 5) {
-      bits -= 5;
-      output += B32_ALPHA[(value >>> bits) & 0x1f];
-    }
-  }
-  if (bits > 0) output += B32_ALPHA[(value << (5 - bits)) & 0x1f];
-  return output;
-}
-
-function generateSerial(name) {
-  // App verwacht VERVALDATUM (niet uitgiftedatum) in bytes 0-1
-  const expiryDays = Math.floor((Date.now() - LIC_EPOCH.getTime()) / 86400000) + 365;
-  const daysBuf = Buffer.alloc(2);
-  daysBuf.writeUInt16BE(expiryDays & 0xffff);
-
-  const nameBuf = Buffer.alloc(8, 0);
-  Buffer.from(name.trim(), 'utf8').slice(0, 8).copy(nameBuf);
-
-  const payload = Buffer.concat([daysBuf, nameBuf]); // 10 bytes
-  const sig = crypto
-    .createHmac('sha256', process.env.LIC_HMAC_KEY || 'CB2026-ContBridge-HMAC-S3cr3t-K3y')
-    .update(payload)
-    .digest()
-    .slice(0, 5);
-
-  const b32 = base32encode(Buffer.concat([payload, sig])); // 15 bytes → 24 chars
-  return `CB-${b32.slice(0,4)}-${b32.slice(4,8)}-${b32.slice(8,12)}-${b32.slice(12,16)}-${b32.slice(16,20)}-${b32.slice(20,24)}`;
-}
 
 // ── GitHub license log (privé repo — klantgegevens nooit in de publieke repo) ─
 const LICENSES_PATH = 'data/licenses.json';
@@ -168,7 +130,14 @@ module.exports = async (req, res) => {
     console.error('Idempotency check failed:', err.message);
   }
 
-  const serial    = generateSerial(name);
+  const seed = signingSeed();
+  if (!seed) {
+    // Zonder sleutel geen geldige serial; 500 → Mollie probeert het later opnieuw
+    console.error('LIC_SIGNING_KEY ontbreekt of is ongeldig — geen serial uitgegeven voor', paymentId);
+    return res.status(500).send('Signing key missing');
+  }
+
+  const serial    = issueSerial(name, seed);
   const issuedAt  = new Date().toISOString();
 
   // Eerst de klantmail: mislukt die, dan 500 zodat Mollie het opnieuw probeert

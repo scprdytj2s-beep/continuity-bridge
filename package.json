@@ -2,6 +2,9 @@
   "name": "studiomichielboesveldt-landing",
   "version": "1.0.0",
   "private": true,
+  "scripts": {
+    "test": "node --test tests/license.test.js && python3 -m unittest discover -s tests"
+  },
   "dependencies": {
     "@mollie/api-client": "^3.7.0",
     "resend": "^4.0.0"
