@@ -60,7 +60,9 @@ async function fromGithub() {
 
 async function fromMollie() {
   const key = process.env.MOLLIE_API_KEY;
-  if (!key) throw new Error('MOLLIE_API_KEY ontbreekt');
+  if (!/^(live|test)_\w+$/.test(key || '')) {
+    throw new Error('MOLLIE_API_KEY ontbreekt of is geen echte sleutel (begint met live_)');
+  }
   let url = 'https://api.mollie.com/v2/payments?limit=250';
   while (url) {
     const r = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
@@ -85,11 +87,17 @@ async function fromMollie() {
 
 (async () => {
   const args = process.argv.slice(2);
-  if (args.includes('--github')) await fromGithub();
-  if (args.includes('--mollie')) await fromMollie();
+  // Eén bron die faalt, stopt de rest niet
+  const tryStep = async (label, fn) => {
+    try { await fn(); } catch (err) { console.error(`  ✗ ${label} overgeslagen: ${err.message}`); }
+  };
+  if (args.includes('--github')) await tryStep('cb-licenses', fromGithub);
+  if (args.includes('--mollie')) await tryStep('Mollie', fromMollie);
   for (const a of args.filter(a => !a.startsWith('--'))) {
     if (fs.existsSync(a)) {
       for (const m of fs.readFileSync(a, 'utf8').match(SERIAL_RE) || []) add(m, a);
+    } else if (/[\/.]/.test(a)) {
+      console.error(`  ✗ bestand niet gevonden: ${a}`);
     } else {
       add(a, 'handmatig');
     }
