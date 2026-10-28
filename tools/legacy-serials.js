@@ -59,9 +59,11 @@ async function fromGithub() {
 }
 
 async function fromMollie() {
-  const key = process.env.MOLLIE_API_KEY;
-  if (!/^(live|test)_\w+$/.test(key || '')) {
-    throw new Error('MOLLIE_API_KEY ontbreekt of is geen echte sleutel (begint met live_)');
+  const key = (process.env.MOLLIE_API_KEY || '').trim();
+  if (!/^(live|test|access)_[A-Za-z0-9]+$/.test(key)) {
+    // Nooit de sleutel zelf tonen — alleen genoeg om te zien wat er misging
+    const hint = key ? `begint met "${key.slice(0, 5)}…", ${key.length} tekens` : 'leeg';
+    throw new Error(`MOLLIE_API_KEY is geen Mollie-sleutel (${hint}); verwacht live_…`);
   }
   let url = 'https://api.mollie.com/v2/payments?limit=250';
   while (url) {
