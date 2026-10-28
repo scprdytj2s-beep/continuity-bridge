@@ -1,40 +1,32 @@
 // api/activate.js  —  Vercel serverless function
 // POST { serial, machine_uuid } → check/register activation in cb-licenses repo
 
-const https = require('https');
+const {
+  normalizeSerial, verifySerial, readJsonFile, writeJsonFile, privateRepo,
+  rateLimited, clientIp,
+} = require('../lib/security');
 
-function ghFetch(method, url, body, token) {
-  return new Promise((resolve, reject) => {
-    const opts = {
-      method,
-      headers: {
-        Authorization:          `Bearer ${token}`,
-        Accept:                 'application/vnd.github+json',
-        'User-Agent':           'ContinuityBridge-Activate',
-        'Content-Type':         'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    };
-    const req = https.request(url, opts, (res) => {
-      let data = '';
-      res.on('data', d => data += d);
-      res.on('end', () => {
-        if (res.statusCode === 404) return resolve(null);
-        if (res.statusCode >= 400) return reject(new Error(`GitHub ${res.statusCode}: ${data}`));
-        resolve(JSON.parse(data));
-      });
-    });
-    req.on('error', reject);
-    if (body) req.write(JSON.stringify(body));
-    req.end();
-  });
+const REVOKE_URL =
+  'https://raw.githubusercontent.com/scprdytj2s-beep/continuity-bridge/main/revoked.json';
+
+async function isRevoked(normalSerial) {
+  try {
+    const r = await fetch(REVOKE_URL, { headers: { 'User-Agent': 'ContinuityBridge-Activate' } });
+    if (!r.ok) return false;
+    const list = await r.json();
+    return Array.isArray(list) && list.some(s => normalizeSerial(s) === normalSerial);
+  } catch {
+    return false;   // lijst onbereikbaar → niet blokkeren
+  }
 }
 
 module.exports = async (req, res) => {
-  // CORS – app maakt directe fetch, geen browser nodig, maar voor de zekerheid
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // De app doet een directe POST; geen browser-toegang nodig
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+
+  if (rateLimited(`act:${clientIp(req)}`, 20, 10 * 60 * 1000)) {
+    return res.status(429).json({ ok: false, reason: 'te_veel_pogingen' });
+  }
 
   let body = req.body || {};
   if (typeof body === 'string') {
@@ -42,8 +34,19 @@ module.exports = async (req, res) => {
   }
 
   const { serial, machine_uuid } = body;
-  if (!serial || !machine_uuid) {
+  if (typeof serial !== 'string' || typeof machine_uuid !== 'string' ||
+      !/^[A-Za-z0-9-]{1,64}$/.test(machine_uuid)) {
     return res.status(400).json({ ok: false, reason: 'missing_data' });
+  }
+
+  // Alleen echte, geldige serials registreren — anders kan iedereen willekeurige
+  // tekst (of andermans serial met een verzonnen machine-ID) in de repo schrijven.
+  const check = verifySerial(serial);
+  if (!check.ok) return res.status(200).json({ ok: false, reason: check.reason });
+
+  const normalSerial = normalizeSerial(serial);
+  if (await isRevoked(normalSerial)) {
+    return res.status(200).json({ ok: false, reason: 'ingetrokken' });
   }
 
   const token = process.env.GITHUB_TOKEN;
@@ -53,19 +56,12 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true, warning: 'no_token' });
   }
 
-  const repo = process.env.LICENSES_REPO || 'scprdytj2s-beep/cb-licenses';
+  const repo = privateRepo();
   const path = 'data/activations.json';
-  const api  = `https://api.github.com/repos/${repo}/contents/${path}`;
 
-  const normalSerial = serial.toUpperCase().replace(/[\s-]/g, '');
-
-  let sha = null, activations = [];
+  let sha, activations;
   try {
-    const existing = await ghFetch('GET', api, null, token);
-    if (existing) {
-      sha         = existing.sha;
-      activations = JSON.parse(Buffer.from(existing.content, 'base64').toString('utf8'));
-    }
+    ({ data: activations, sha } = await readJsonFile(repo, path, token));
   } catch (err) {
     console.error('GitHub read failed:', err.message);
     // Kan niet lezen → fail open
@@ -91,13 +87,9 @@ module.exports = async (req, res) => {
     activated_at: new Date().toISOString(),
   });
 
-  const content = Buffer.from(JSON.stringify(activations, null, 2)).toString('base64');
   try {
-    await ghFetch('PUT', api, {
-      message: `activate: ${normalSerial.slice(0, 7)}…`,
-      content,
-      ...(sha ? { sha } : {}),
-    }, token);
+    await writeJsonFile(repo, path, token, activations, sha,
+                        `activate: ${normalSerial.slice(0, 7)}…`);
   } catch (err) {
     console.error('GitHub write failed:', err.message);
     // Schrijven mislukt → toch toestaan (gebruiker is dan dubbel geregistreerd bij retry)

@@ -4,7 +4,9 @@
 const { createMollieClient } = require('@mollie/api-client');
 const { Resend } = require('resend');
 const crypto = require('crypto');
-const https = require('https');
+const {
+  escapeHtml, cleanLine, isEmail, readJsonFile, writeJsonFile, privateRepo,
+} = require('../lib/security');
 
 // ── Serial generation ────────────────────────────────────────────────────────
 const LIC_EPOCH = new Date('2024-01-01T00:00:00Z');
@@ -44,55 +46,31 @@ function generateSerial(name) {
   return `CB-${b32.slice(0,4)}-${b32.slice(4,8)}-${b32.slice(8,12)}-${b32.slice(12,16)}-${b32.slice(16,20)}-${b32.slice(20,24)}`;
 }
 
-// ── GitHub license log ───────────────────────────────────────────────────────
-function ghFetch(method, url, body, token) {
-  return new Promise((resolve, reject) => {
-    const opts = {
-      method,
-      headers: {
-        Authorization:          `Bearer ${token}`,
-        Accept:                 'application/vnd.github+json',
-        'User-Agent':           'ContinuityBridge-Webhook',
-        'Content-Type':         'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    };
-    const req = https.request(url, opts, (res) => {
-      let data = '';
-      res.on('data', d => data += d);
-      res.on('end', () => {
-        if (res.statusCode >= 400) return reject(new Error(`GitHub ${res.statusCode}: ${data}`));
-        resolve(JSON.parse(data));
-      });
-    });
-    req.on('error', reject);
-    if (body) req.write(JSON.stringify(body));
-    req.end();
-  });
+// ── GitHub license log (privé repo — klantgegevens nooit in de publieke repo) ─
+const LICENSES_PATH = 'data/licenses.json';
+
+function githubToken() {
+  const token = process.env.GITHUB_TOKEN;
+  return token && token !== 'STEL_MIJ_IN' ? token : null;
+}
+
+// Mollie roept de webhook bij retries meerdere keren aan voor dezelfde
+// betaling — controleer of deze al verwerkt is (anders dubbele mails/serials).
+async function alreadyProcessed(paymentId) {
+  const token = githubToken();
+  if (!token) return false;
+  const { data } = await readJsonFile(privateRepo(), LICENSES_PATH, token);
+  return data.some(e => e.paymentId === paymentId);
 }
 
 async function logToGitHub(entry) {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token || token === 'STEL_MIJ_IN') { console.warn('GITHUB_TOKEN not set'); return; }
-  // Gebruik LICENSES_REPO env var (stel in als private repo voor privacy klantdata)
-  const repo  = process.env.LICENSES_REPO || 'scprdytj2s-beep/continuity-bridge';
-  const path  = 'data/licenses.json';
-  const api   = `https://api.github.com/repos/${repo}/contents/${path}`;
-
-  let sha = null, existing = [];
-  try {
-    const res = await ghFetch('GET', api, null, token);
-    sha = res.sha;
-    existing = JSON.parse(Buffer.from(res.content, 'base64').toString('utf8'));
-  } catch { /* file doesn't exist yet — start fresh */ }
-
-  existing.push(entry);
-  const content = Buffer.from(JSON.stringify(existing, null, 2)).toString('base64');
-  await ghFetch('PUT', api, {
-    message: `license issued: ${entry.email}`,
-    content,
-    ...(sha ? { sha } : {}),
-  }, token);
+  const token = githubToken();
+  if (!token) { console.warn('GITHUB_TOKEN not set'); return; }
+  const repo = privateRepo();
+  const { data, sha } = await readJsonFile(repo, LICENSES_PATH, token);
+  data.push(entry);
+  await writeJsonFile(repo, LICENSES_PATH, token, data, sha,
+                      `license issued: ${entry.paymentId}`);
 }
 
 // ── Email ────────────────────────────────────────────────────────────────────
@@ -101,15 +79,16 @@ async function sendNotificationEmail(name, email, serial) {
   await resend.emails.send({
     from:    'Continuity Bridge <licentie@studiomichielboesveldt.nl>',
     to:      'support@studiomichielboesveldt.nl',
-    subject: `🎉 Nieuwe licentie verkocht — ${name}`,
-    html: `<p><strong>${name}</strong> (${email}) heeft zojuist een licentie gekocht.</p>
-           <p>Serial: <code>${serial}</code></p>`,
+    subject: `🎉 Nieuwe licentie verkocht — ${cleanLine(name, 80)}`,
+    html: `<p><strong>${escapeHtml(name)}</strong> (${escapeHtml(email)}) heeft zojuist een licentie gekocht.</p>
+           <p>Serial: <code>${escapeHtml(serial)}</code></p>`,
   });
 }
 
 async function sendLicenseEmail(email, name, serial) {
   const resend = new Resend(process.env.RESEND_API_KEY);
-  await resend.emails.send({
+  // Resend gooit niet bij een API-fout maar geeft { error } terug
+  const { error } = await resend.emails.send({
     from:    'Continuity Bridge <licentie@studiomichielboesveldt.nl>',
     to:      email,
     subject: 'Je Continuity Bridge licentie',
@@ -130,11 +109,11 @@ h1{font-size:22px;font-weight:600;color:#fff;margin-bottom:4px}
 a{color:#d4a853;text-decoration:none}
 </style></head>
 <body><div class="wrap">
-  <h1>Bedankt, ${name}!</h1>
+  <h1>Bedankt, ${escapeHtml(name)}!</h1>
   <p class="sub">Je Continuity Bridge jaarlicentie is klaar voor gebruik.</p>
   <div class="serial-box">
     <div class="serial-label">Jouw seriënummer</div>
-    <div class="serial">${serial}</div>
+    <div class="serial">${escapeHtml(serial)}</div>
   </div>
   <div class="steps">
     <div class="step"><div class="step-num">1</div><div class="step-text">Open Continuity Bridge op je Mac of Windows-pc.</div></div>
@@ -146,6 +125,7 @@ a{color:#d4a853;text-decoration:none}
   <div class="footer">Continuity Bridge · <a href="https://studiomichielboesveldt.nl/cbapp/">studiomichielboesveldt.nl/cbapp</a></div>
 </div></body></html>`,
   });
+  if (error) throw new Error(`Resend: ${error.message || JSON.stringify(error)}`);
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -172,22 +152,39 @@ module.exports = async (req, res) => {
 
   if (payment.status !== 'paid') return res.status(200).send('OK (not paid)');
 
-  const { name, email } = payment.metadata || {};
-  if (!name || !email) {
-    console.error('Missing metadata on payment', paymentId);
+  const meta  = payment.metadata || {};
+  const name  = cleanLine(meta.name, 80);
+  const email = cleanLine(meta.email, 254);
+  if (!name || !isEmail(email)) {
+    console.error('Missing/invalid metadata on payment', paymentId);
     return res.status(200).send('OK (no metadata)');
+  }
+
+  try {
+    if (await alreadyProcessed(paymentId)) return res.status(200).send('OK (already processed)');
+  } catch (err) {
+    // Kan niet controleren (bv. token verlopen) → toch uitleveren: liever in
+    // het zeldzame geval een dubbele mail dan een klant zonder serial.
+    console.error('Idempotency check failed:', err.message);
   }
 
   const serial    = generateSerial(name);
   const issuedAt  = new Date().toISOString();
 
-  const [emailRes, notifRes, ghRes] = await Promise.allSettled([
-    sendLicenseEmail(email, name, serial),
+  // Eerst de klantmail: mislukt die, dan 500 zodat Mollie het opnieuw probeert
+  // (anders betaalt de klant maar krijgt nooit een serial).
+  try {
+    await sendLicenseEmail(email, name, serial);
+  } catch (err) {
+    console.error('License email failed:', err);
+    return res.status(500).send('Email failed');
+  }
+
+  const [notifRes, ghRes] = await Promise.allSettled([
     sendNotificationEmail(name, email, serial),
     logToGitHub({ paymentId, name, email, serial, issuedAt }),
   ]);
 
-  if (emailRes.status  === 'rejected') console.error('Email failed:', emailRes.reason);
   if (notifRes.status  === 'rejected') console.error('Notif email failed:', notifRes.reason);
   if (ghRes.status     === 'rejected') console.error('GitHub log failed:', ghRes.reason);
 

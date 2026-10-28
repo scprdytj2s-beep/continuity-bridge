@@ -108,7 +108,7 @@
     const params = new URLSearchParams(window.location.search);
     const name = params.get('name');
     if (name) {
-      document.getElementById('title').textContent = `Bedankt, ${decodeURIComponent(name)}!`;
+      document.getElementById('title').textContent = `Bedankt, ${name.slice(0, 80)}!`;
     }
   </script>
 </body>

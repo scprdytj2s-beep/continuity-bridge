@@ -6,6 +6,9 @@ on:
     tags:
       - 'v*'          # automatisch bij elke versie-tag
 
+permissions:
+  contents: write   # alleen nodig om de DMG aan de release te hangen
+
 jobs:
   build:
     runs-on: macos-13  # Intel Mac (macos-latest = Silicon, macos-13 = Intel)

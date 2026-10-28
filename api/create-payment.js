@@ -2,6 +2,7 @@
 // POST { name, email } → { checkoutUrl }
 
 const { createMollieClient } = require('@mollie/api-client');
+const { cleanLine, isEmail, rateLimited, clientIp } = require('../lib/security');
 
 const SITE = 'https://studiomichielboesveldt.nl';
 
@@ -10,9 +11,15 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { name, email } = req.body || {};
+  if (rateLimited(`pay:${clientIp(req)}`, 10, 10 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Te veel pogingen. Probeer het later opnieuw.' });
+  }
 
-  if (!name || !email || !email.includes('@')) {
+  const body  = req.body || {};
+  const name  = cleanLine(body.name, 80);
+  const email = cleanLine(body.email, 254);
+
+  if (!name || !isEmail(email)) {
     return res.status(400).json({ error: 'Naam en e-mailadres zijn verplicht.' });
   }
 

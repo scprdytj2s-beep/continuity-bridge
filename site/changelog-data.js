@@ -5,9 +5,46 @@
 
 const RELEASES = [
   {
+    version: 'v1.4.1',
+    date: { nl: '28 oktober 2026', en: '28 October 2026', de: '28. Oktober 2026' },
+    latest: true,
+    title: {
+      nl: 'Beveiligingsupdate',
+      en: 'Security update',
+      de: 'Sicherheitsupdate',
+    },
+    groups: [
+      {
+        kind: 'improve',
+        items: [
+          {
+            nl: '<strong>Veiliger updaten</strong> — de app controleert nu altijd of een update echt van ons komt en onbeschadigd is voordat hij wordt geïnstalleerd',
+            en: '<strong>Safer updates</strong> — the app now always checks that an update really comes from us and is intact before installing it',
+            de: '<strong>Sichereres Aktualisieren</strong> — die App prüft jetzt immer, ob ein Update wirklich von uns stammt und unbeschädigt ist, bevor es installiert wird',
+          },
+          {
+            nl: 'Bij een update gaat de vorige versie naar de <strong>Prullenbak</strong> in plaats van direct gewist te worden — en lukt de update niet, dan blijft je oude versie gewoon werken',
+            en: 'When updating, the previous version goes to the <strong>Trash</strong> instead of being deleted right away — and if the update fails, your old version keeps working',
+            de: 'Beim Aktualisieren landet die vorherige Version im <strong>Papierkorb</strong>, statt sofort gelöscht zu werden — und schlägt das Update fehl, funktioniert deine alte Version einfach weiter',
+          },
+          {
+            nl: 'Je licentiegegevens op je computer zijn nu alleen nog leesbaar voor jouw gebruikersaccount',
+            en: 'Your license details on your computer can now only be read by your own user account',
+            de: 'Deine Lizenzdaten auf deinem Computer sind jetzt nur noch für dein eigenes Benutzerkonto lesbar',
+          },
+          {
+            nl: '<strong>Privacy</strong>: bij een melding via het feedbackformulier wordt je e-mailadres niet meer openbaar getoond, en screenshots worden privé bewaard',
+            en: '<strong>Privacy</strong>: when you send feedback, your email address is no longer shown publicly, and screenshots are stored privately',
+            de: '<strong>Datenschutz</strong>: Bei einer Meldung über das Feedbackformular wird deine E-Mail-Adresse nicht mehr öffentlich angezeigt, und Screenshots werden privat gespeichert',
+          },
+        ],
+      },
+    ],
+  },
+
+  {
     version: 'v1.4.0',
     date: { nl: '24 juli 2026', en: '24 July 2026', de: '24. Juli 2026' },
-    latest: true,
     title: {
       nl: '.avb-bin direct inslepen & duidelijkere PU/AFG',
       en: 'Direct .avb bin drop & clearer PU/AFG',

@@ -1602,7 +1602,7 @@ _patch_nsmenuitem_for_macos15plus()
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.4.0 (Beta)"
+VERSION       = "1.4.1 (Beta)"
 
 # ── Vertalingen ────────────────────────────────────────────────────────────────
 STRINGS: dict[str, dict[str, str]] = {
@@ -1743,6 +1743,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "lic_verify_msg":          "Activatie verifiëren…",
         "lic_name_mismatch":       "✗ Naam komt niet overeen met licentie.",
         "lic_already_bound":       "✗ Serial al geactiveerd op een andere machine.\nNeem contact op met support@studiomichielboesveldt.nl",
+        "lic_revoked_server":      "✗ Deze licentie is ingetrokken.\nNeem contact op met support@studiomichielboesveldt.nl",
         "lic_removed_msg":         "Licentie verwijderd. Voer een nieuw serienummer in.",
         "lic_remove_confirm":      "Licentie verwijderen van deze Mac?\n\nJe moet daarna een nieuw serienummer invoeren.",
         "lic_ask_new_serial":      "Nieuw serienummer invoeren?",
@@ -1995,6 +1996,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "lic_verify_msg":          "Verifying activation…",
         "lic_name_mismatch":       "✗ Name does not match the license.",
         "lic_already_bound":       "✗ Serial already activated on another machine.\nContact support@studiomichielboesveldt.nl",
+        "lic_revoked_server":      "✗ This license has been revoked.\nContact support@studiomichielboesveldt.nl",
         "lic_removed_msg":         "License removed. Enter a new serial number.",
         "lic_remove_confirm":      "Remove license from this Mac?\n\nYou will need to enter a new serial number afterwards.",
         "lic_ask_new_serial":      "Enter new serial number?",
@@ -2247,6 +2249,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "lic_verify_msg":          "Aktivierung wird überprüft…",
         "lic_name_mismatch":       "✗ Name stimmt nicht mit der Lizenz überein.",
         "lic_already_bound":       "✗ Seriennummer bereits auf einem anderen Gerät aktiviert.\nKontaktiere support@studiomichielboesveldt.nl",
+        "lic_revoked_server":      "✗ Diese Lizenz wurde widerrufen.\nKontaktiere support@studiomichielboesveldt.nl",
         "lic_removed_msg":         "Lizenz entfernt. Gib eine neue Seriennummer ein.",
         "lic_remove_confirm":      "Lizenz von diesem Mac entfernen?\n\nDu musst danach eine neue Seriennummer eingeben.",
         "lic_ask_new_serial":      "Neue Seriennummer eingeben?",
@@ -2383,6 +2386,27 @@ GITHUB_REPO   = "scprdytj2s-beep/continuity-bridge"
 RELEASES_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases/latest"
 
+
+def _https_context():
+    """TLS-context mét certificaatcontrole: certifi-bundel, anders systeemcerts.
+    Nooit terugvallen op een ongeverifieerde context — de updater voert de
+    gedownloade DMG/EXE uit, dus een MITM zou anders code kunnen injecteren."""
+    import ssl as _ssl_h
+    try:
+        import certifi as _certifi_h
+        return _ssl_h.create_default_context(cafile=_certifi_h.where())
+    except Exception:
+        return _ssl_h.create_default_context()
+
+
+def _write_private(path: Path, text: str):
+    """Schrijf een bestand dat alleen de eigenaar mag lezen (0600)."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.chmod(path, 0o600)   # ook als het bestand al bestond met ruimere rechten
+
 # ---------------------------------------------------------------------------
 # LICENTIE
 # Serialformaat: CB-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX  (24 base32-chars na CB-)
@@ -2475,7 +2499,9 @@ def _fetch_revoked_list():
         import urllib.request
         req = urllib.request.Request(_REVOKE_URL,
               headers={"User-Agent": "ContinuityBridge"})
-        with urllib.request.urlopen(req, timeout=5) as r:
+        # certifi-context: zonder die faalt dit stil in de gebouwde app op
+        # Macs zonder bruikbare systeemcertificaten → intrekken werkt dan niet
+        with urllib.request.urlopen(req, timeout=5, context=_https_context()) as r:
             data = _json.loads(r.read())
         for s in data:
             combined.add(s.upper().replace(' ', ''))
@@ -2520,8 +2546,7 @@ def _license_load():
 
 
 def _license_save(serial: str):
-    _LIC_DIR.mkdir(parents=True, exist_ok=True)
-    _LIC_FILE.write_text(_json.dumps({
+    _write_private(_LIC_FILE, _json.dumps({
         'serial':     serial.strip(),
         'machine_id': _machine_uuid()
     }))
@@ -3060,23 +3085,12 @@ class App:
         # ── Update-check ─────────────────────────────────────────────────────
         def _check_updates(silent=False):
             """Check GitHub releases. silent=True → alleen tonen bij nieuwere versie."""
-            import urllib.request, json as _json2, ssl as _ssl
+            import urllib.request, json as _json2
             def _do():
                 try:
-                    # SSL context: certifi → systeemcerts → unverified
-                    def _make_ctx():
-                        try:
-                            import certifi as _certifi
-                            return _ssl.create_default_context(cafile=_certifi.where())
-                        except Exception:
-                            pass
-                        try:
-                            return _ssl.create_default_context()
-                        except Exception:
-                            return _ssl._create_unverified_context()
                     req = urllib.request.Request(RELEASES_URL,
                           headers={"User-Agent": "ContinuityBridge"})
-                    with urllib.request.urlopen(req, timeout=10, context=_make_ctx()) as r:
+                    with urllib.request.urlopen(req, timeout=10, context=_https_context()) as r:
                         releases = _json2.loads(r.read())
                     if not isinstance(releases, list) or not releases:
                         if not silent:
@@ -3104,8 +3118,11 @@ class App:
                             want = 'Intel'
                         asset = next((a for a in assets if want in a['name']), None)
                         dl_url = asset['browser_download_url'] if asset else None
-                        self.root.after(0, lambda lv=latest, url=dl_url:
-                                        _show_update_dialog(lv, url))
+                        # GitHub levert per asset een "sha256:…"-digest mee; daarmee
+                        # controleren we straks of de download onbeschadigd is.
+                        dl_digest = asset.get('digest') if asset else None
+                        self.root.after(0, lambda lv=latest, url=dl_url, dg=dl_digest:
+                                        _show_update_dialog(lv, url, dg))
                     elif not silent:
                         self.root.after(0, lambda: tk.messagebox.showinfo(
                             t("wintitle_no_update"),
@@ -3117,7 +3134,7 @@ class App:
                             t("update_fetch_error", repo=GITHUB_REPO)))
             threading.Thread(target=_do, daemon=True).start()
 
-        def _show_update_dialog(latest_version, dl_url):
+        def _show_update_dialog(latest_version, dl_url, dl_digest=None):
             """In-app update dialog met progress bar en automatische herstart."""
             import webbrowser as _wb
             dlg = tk.Toplevel(self.root)
@@ -3192,24 +3209,23 @@ class App:
                     pass
 
             def _download_and_install():
-                import urllib.request as _ur2, tempfile, os, sys as _sys3, ssl as _ssl2
+                import urllib.request as _ur2, urllib.parse as _up2, tempfile, os, sys as _sys3
                 _ulog(f"download start: {dl_url}")
                 try:
-                    try:
-                        import certifi as _certifi2
-                        _ctx2 = _ssl2.create_default_context(cafile=_certifi2.where())
-                    except Exception:
-                        try:
-                            _ctx2 = _ssl2.create_default_context()
-                        except Exception:
-                            _ctx2 = _ssl2._create_unverified_context()
+                    # Alleen downloaden van GitHub-releases, via geverifieerde TLS
+                    _u = _up2.urlparse(dl_url)
+                    if _u.scheme != "https" or _u.hostname != "github.com":
+                        raise RuntimeError("Onverwachte downloadlocatie")
                     # ── Download ──────────────────────────────────────────────
                     # Geen tkinter-aanroepen vanuit deze thread! Alleen _ustate
                     # bijwerken; de hoofdthread pollt en tekent.
                     ext = '.exe' if _sys3.platform == 'win32' else '.dmg'
                     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+                    sha = _hashlib.sha256()
                     _ustate["phase"] = "download"
-                    with _ur2.urlopen(dl_url, timeout=120, context=_ctx2) as resp:
+                    with _ur2.urlopen(dl_url, timeout=120, context=_https_context()) as resp:
+                        if not resp.geturl().startswith("https://"):
+                            raise RuntimeError("Download omgeleid naar onbeveiligde verbinding")
                         total = int(resp.headers.get('Content-Length', 0))
                         done  = 0
                         while True:
@@ -3217,6 +3233,7 @@ class App:
                             if not chunk:
                                 break
                             tmp.write(chunk)
+                            sha.update(chunk)
                             done += len(chunk)
                             _ustate["kb"] = done // 1024
                             if total:
@@ -3224,11 +3241,19 @@ class App:
                     tmp.close()
                     tmp_path = tmp.name
                     _ulog(f"download klaar: {done} bytes -> {tmp_path}")
+
+                    # Integriteitscontrole tegen de digest uit de GitHub-API
+                    algo, _, want = (dl_digest or "").partition(":")
+                    if algo.lower() == "sha256" and want:
+                        if sha.hexdigest() != want.lower():
+                            os.unlink(tmp_path)
+                            raise RuntimeError("Download beschadigd (checksum klopt niet)")
+                        _ulog("checksum ok")
                     _ustate["phase"] = "install"
 
                     if _sys3.platform == 'win32':
                         import subprocess as _sp3
-                        _sp3.Popen([tmp_path], shell=True)
+                        _sp3.Popen([tmp_path])
                         _ustate["win_done"] = True
                     else:
                         import subprocess as _sp3, glob, shutil
@@ -3257,6 +3282,10 @@ class App:
                             install_path = str(Path(_sys3.executable).parents[2])
                         else:
                             install_path = f"/Applications/{os.path.basename(new_app)}"
+                        # Het helperscript verplaatst dit pad; weiger alles wat
+                        # niet onmiskenbaar een .app-bundel is.
+                        if not install_path.endswith(".app") or install_path.count("/") < 2:
+                            raise RuntimeError(f"Onverwacht installatiepad: {install_path}")
 
                         # Kopieer de nieuwe app NAAR een temp-map (niet over de
                         # draaiende app heen). Het vervangen gebeurt straks via een
@@ -3298,7 +3327,9 @@ class App:
 
             def _do_restart(install_path, staged_app, stage_dir):
                 # Helper-script wacht tot deze app dicht is, vervangt dan de oude
-                # .app door de nieuwe, verwijdert quarantine en herstart.
+                # .app door de nieuwe, verwijdert quarantine en herstart. De oude
+                # versie gaat naar de Prullenbak (terug te halen); mislukt het
+                # kopiëren, dan wordt de oude versie teruggezet.
                 import subprocess as _sp4, sys as _sys4, os as _os4, shlex as _shlex4
                 _q = _shlex4.quote
                 pid = _os4.getpid()
@@ -3312,16 +3343,38 @@ LOG={_q(_logf)}
 mkdir -p "$(dirname "$LOG")"
 echo "=== $(date) update-helper gestart (pid {pid}) ===" >> "$LOG"
 echo "APP=$APP" >> "$LOG"; echo "NEW=$NEW" >> "$LOG"
+case "$APP" in
+  /*.app) ;;
+  *) echo "onverwacht doelpad — afgebroken" >> "$LOG"; exit 1 ;;
+esac
 # wacht tot de huidige app gesloten is
 while kill -0 {pid} 2>/dev/null; do sleep 0.3; done
 sleep 0.4
-rm -rf "$APP" 2>>"$LOG"
-/usr/bin/ditto "$NEW" "$APP" 2>>"$LOG"
-echo "ditto exit=$?" >> "$LOG"
+BACKUP="$STAGE/vorige-versie.app"
+if ! mv "$APP" "$BACKUP" 2>>"$LOG"; then
+  echo "oude app kon niet verplaatst worden — update afgebroken" >> "$LOG"
+  open "$APP"; exit 1
+fi
+if /usr/bin/ditto "$NEW" "$APP" 2>>"$LOG"; then
+  echo "ditto ok" >> "$LOG"
+  TRASH="$HOME/.Trash/Continuity Bridge (vorige versie $(date +%Y%m%d-%H%M%S)).app"
+  if mv "$BACKUP" "$TRASH" 2>>"$LOG"; then
+    echo "vorige versie naar Prullenbak" >> "$LOG"
+    CLEAN=1
+  else
+    echo "vorige versie bewaard in $BACKUP" >> "$LOG"
+    CLEAN=0
+  fi
+else
+  echo "ditto mislukt — vorige versie teruggezet" >> "$LOG"
+  rm -rf "$APP"
+  mv "$BACKUP" "$APP"
+  CLEAN=0
+fi
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null
 open "$APP" 2>>"$LOG"
 echo "open exit=$? — klaar" >> "$LOG"
-rm -rf "$STAGE"
+[ "$CLEAN" = 1 ] && rm -rf "$STAGE"
 '''
                 with open(script, "w") as _f:
                     _f.write(sh)
@@ -3599,7 +3652,7 @@ rm -rf "$STAGE"
                                      "User-Agent": "ContinuityBridge"},
                             method="POST",
                         )
-                        with _ur.urlopen(req, timeout=8) as r:
+                        with _ur.urlopen(req, timeout=8, context=_https_context()) as r:
                             result = _js.loads(r.read())
                         server_ok     = result.get("ok", True)
                         server_reason = result.get("reason", "")
@@ -3610,6 +3663,9 @@ rm -rf "$STAGE"
                         _act_cv.config(state="normal")
                         if not server_ok and server_reason == "al_gebonden":
                             status_lbl.config(fg=ERROR, text=t("lic_already_bound"))
+                            return
+                        if not server_ok and server_reason == "ingetrokken":
+                            status_lbl.config(fg=ERROR, text=t("lic_revoked_server"))
                             return
                         _license_save(serial_var.get())
                         self._license_expiry = expiry
@@ -3713,13 +3769,15 @@ rm -rf "$STAGE"
 
         def _mgr_token_load():
             try:
+                # Oudere versies schreven dit bestand leesbaar voor iedereen
+                os.chmod(_MGR_TOKEN_FILE, 0o600)
                 return _MGR_TOKEN_FILE.read_text().strip()
             except Exception:
                 return ""
 
         def _mgr_token_save(tok):
-            _LIC_DIR.mkdir(parents=True, exist_ok=True)
-            _MGR_TOKEN_FILE.write_text(tok.strip())
+            # GitHub-token met schrijfrechten — alleen leesbaar voor de eigenaar
+            _write_private(_MGR_TOKEN_FILE, tok.strip())
 
         def _fetch_licenses_from_github(token):
             """Haal data/licenses.json op uit private repo. Returns list of dicts."""
