@@ -211,14 +211,14 @@ class ActivateEndToEndTest(LicenseTestBase):
         super().setUp()
         self.legacy_ok = legacy_serial("Klant", date.today() + timedelta(days=200))
         self.server = subprocess.Popen(
-            ["node", "tests/serve-activate.js"], cwd=ROOT, stdout=subprocess.PIPE, text=True,
+            ["node", "tests/serve-api.js"], cwd=ROOT, stdout=subprocess.PIPE, text=True,
             env={**os.environ, "LIC_SIGNING_KEY": base64.b64encode(self.seed).decode(),
                  "LEGACY_SERIALS": self.legacy_ok, "GITHUB_TOKEN": ""})
         self.addCleanup(self.server.stdout.close)
         self.addCleanup(self.server.wait)
         self.addCleanup(self.server.terminate)
         port = self.server.stdout.readline().strip()
-        p = mock.patch.object(app, "_LIC_ACTIVATE_URL", f"http://127.0.0.1:{port}/")
+        p = mock.patch.object(app, "_LIC_API", f"http://127.0.0.1:{port}/api")
         p.start()
         self.addCleanup(p.stop)
 
@@ -246,8 +246,17 @@ class ActivateEndToEndTest(LicenseTestBase):
         old = self.issue("Oud", date(2025, 1, 1))
         self.assertEqual(app._activate_online(old), ("rejected", "verlopen"))
 
+    def test_deactivate(self):
+        serial = self.issue("Anna")
+        result, token = app._activate_online(serial)
+        self.assertEqual(result, "ok")
+        self.assertTrue(app._deactivate_online(token))
+        self.assertTrue(app._deactivate_online("onzin"))   # niets vrij te geven
+        with mock.patch.object(app, "_LIC_API", "http://127.0.0.1:9/api"):
+            self.assertFalse(app._deactivate_online(token))
+
     def test_server_unreachable_is_offline(self):
-        with mock.patch.object(app, "_LIC_ACTIVATE_URL", "http://127.0.0.1:9/"):
+        with mock.patch.object(app, "_LIC_API", "http://127.0.0.1:9/api"):
             self.assertEqual(app._activate_online(self.issue("Anna")), ("offline", None))
 
 
@@ -255,13 +264,13 @@ class ActivateEndToEndTest(LicenseTestBase):
 class ServerConfigTest(LicenseTestBase):
     def test_missing_signing_key_is_offline_not_rejected(self):
         server = subprocess.Popen(
-            ["node", "tests/serve-activate.js"], cwd=ROOT, stdout=subprocess.PIPE, text=True,
+            ["node", "tests/serve-api.js"], cwd=ROOT, stdout=subprocess.PIPE, text=True,
             env={k: v for k, v in os.environ.items() if k != "LIC_SIGNING_KEY"})
         self.addCleanup(server.stdout.close)
         self.addCleanup(server.wait)
         self.addCleanup(server.terminate)
         port = server.stdout.readline().strip()
-        with mock.patch.object(app, "_LIC_ACTIVATE_URL", f"http://127.0.0.1:{port}/"):
+        with mock.patch.object(app, "_LIC_API", f"http://127.0.0.1:{port}/api"):
             self.assertEqual(app._activate_online(self.issue("Anna")), ("offline", None))
 
 

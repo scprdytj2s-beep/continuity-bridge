@@ -5,9 +5,31 @@
 
 const RELEASES = [
   {
-    version: 'v1.5.0',
+    version: 'v1.5.1',
     date: { nl: '28 oktober 2026', en: '28 October 2026', de: '28. Oktober 2026' },
     latest: true,
+    title: {
+      nl: 'Licentie verhuizen naar een andere computer',
+      en: 'Move your license to another computer',
+      de: 'Lizenz auf einen anderen Computer umziehen',
+    },
+    groups: [
+      {
+        kind: 'new',
+        items: [
+          {
+            nl: 'Nieuwe computer? Via <strong>Help → Verwijder licentie</strong> geef je je licentie vrij, daarna activeer je hem gewoon op je nieuwe computer',
+            en: 'New computer? Use <strong>Help → Remove License</strong> to release your license, then simply activate it on your new computer',
+            de: 'Neuer Computer? Über <strong>Hilfe → Lizenz entfernen</strong> gibst du deine Lizenz frei und aktivierst sie dann einfach auf deinem neuen Computer',
+          },
+        ],
+      },
+    ],
+  },
+
+  {
+    version: 'v1.5.0',
+    date: { nl: '28 oktober 2026', en: '28 October 2026', de: '28. Oktober 2026' },
     title: {
       nl: 'Beter beveiligde licenties',
       en: 'Better protected licenses',

@@ -1602,7 +1602,7 @@ _patch_nsmenuitem_for_macos15plus()
 # GUI  —  Avid-stijl kleurenpalet
 # ---------------------------------------------------------------------------
 
-VERSION       = "1.5.0 (Beta)"
+VERSION       = "1.5.1 (Beta)"
 
 # ── Vertalingen ────────────────────────────────────────────────────────────────
 STRINGS: dict[str, dict[str, str]] = {
@@ -1751,7 +1751,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "lic_grace_over":          "Licentie kon niet online worden bevestigd.\nMaak verbinding met internet en activeer opnieuw.",
         "lic_token_invalid":       "Ongeldige activatie. Activeer opnieuw.",
         "lic_removed_msg":         "Licentie verwijderd. Voer een nieuw serienummer in.",
-        "lic_remove_confirm":      "Licentie verwijderen van deze Mac?\n\nJe moet daarna een nieuw serienummer invoeren.",
+        "lic_remove_confirm":      "Licentie verwijderen van deze computer?\n\nDaarna kun je hem op een andere computer activeren.",
+        "lic_release_offline":     "De licentie kon niet online worden vrijgegeven (geen verbinding).\n\nToch verwijderen? Activeren op een andere computer lukt dan pas na contact met support@studiomichielboesveldt.nl.",
         "lic_ask_new_serial":      "Nieuw serienummer invoeren?",
         "lic_active_label":        "✓  Actief",
         # Licentiebeheer
@@ -2010,7 +2011,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "lic_grace_over":          "The license could not be confirmed online.\nConnect to the internet and activate again.",
         "lic_token_invalid":       "Invalid activation. Please activate again.",
         "lic_removed_msg":         "License removed. Enter a new serial number.",
-        "lic_remove_confirm":      "Remove license from this Mac?\n\nYou will need to enter a new serial number afterwards.",
+        "lic_remove_confirm":      "Remove the license from this computer?\n\nYou can then activate it on another computer.",
+        "lic_release_offline":     "The license could not be released online (no connection).\n\nRemove it anyway? Activating on another computer will then only work after contacting support@studiomichielboesveldt.nl.",
         "lic_ask_new_serial":      "Enter new serial number?",
         "lic_active_label":        "✓  Active",
         # License manager
@@ -2269,7 +2271,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "lic_grace_over":          "Die Lizenz konnte nicht online bestätigt werden.\nVerbinde dich mit dem Internet und aktiviere erneut.",
         "lic_token_invalid":       "Ungültige Aktivierung. Bitte erneut aktivieren.",
         "lic_removed_msg":         "Lizenz entfernt. Gib eine neue Seriennummer ein.",
-        "lic_remove_confirm":      "Lizenz von diesem Mac entfernen?\n\nDu musst danach eine neue Seriennummer eingeben.",
+        "lic_remove_confirm":      "Lizenz von diesem Computer entfernen?\n\nDanach kannst du sie auf einem anderen Computer aktivieren.",
+        "lic_release_offline":     "Die Lizenz konnte nicht online freigegeben werden (keine Verbindung).\n\nTrotzdem entfernen? Die Aktivierung auf einem anderen Computer klappt dann erst nach Kontakt mit support@studiomichielboesveldt.nl.",
         "lic_ask_new_serial":      "Neue Seriennummer eingeben?",
         "lic_active_label":        "✓  Aktiv",
         # Lizenzverwaltung
@@ -2449,10 +2452,10 @@ _LIC_GRACE_DAYS   = 14
 _LIC_EPOCH        = _date(2024, 1, 1)
 _LIC_DIR          = Path.home() / ".continuitybridge"
 _LIC_FILE         = _LIC_DIR / "license"
-# CB_ACTIVATE_URL: alleen voor tests met een lokale server. Ongevaarlijk: een
+# CB_LICENSE_API: alleen voor tests met een lokale server. Ongevaarlijk: een
 # andere server kan geen tokens maken die _token_verify accepteert.
-_LIC_ACTIVATE_URL = (os.environ.get("CB_ACTIVATE_URL")
-                     or "https://studiomichielboesveldt.nl/api/activate")
+_LIC_API = (os.environ.get("CB_LICENSE_API")
+            or "https://studiomichielboesveldt.nl/api")
 _REVOKE_URL = (f"https://raw.githubusercontent.com/"
                f"scprdytj2s-beep/continuity-bridge/main/revoked.json")
 
@@ -2623,7 +2626,7 @@ def _activate_online(serial: str):
     import urllib.request as _ur, urllib.error as _ue
     try:
         req = _ur.Request(
-            _LIC_ACTIVATE_URL,
+            f"{_LIC_API}/activate",
             data=_json.dumps({"serial": serial.strip(),
                               "machine_uuid": _machine_uuid()}).encode(),
             headers={"Content-Type": "application/json",
@@ -2644,6 +2647,25 @@ def _activate_online(serial: str):
             or claims.get('mid') != _machine_uuid():
         return 'offline', None   # bv. oude server zonder tokens
     return 'ok', token
+
+
+def _deactivate_online(token: str) -> bool:
+    """Geef de licentie online vrij voor een andere computer (api/deactivate.js).
+    Returns False bij geen verbinding of een storing."""
+    import urllib.request as _ur
+    try:
+        req = _ur.Request(
+            f"{_LIC_API}/deactivate",
+            data=_json.dumps({"token": token}).encode(),
+            headers={"Content-Type": "application/json",
+                     "User-Agent": "ContinuityBridge"},
+            method="POST",
+        )
+        with _ur.urlopen(req, timeout=8, context=_https_context()) as r:
+            r.read()
+        return True   # ook bij een ongeldig token: dan staat er niets vast te geven
+    except Exception:
+        return False
 
 
 def _activation_reject_msg(reason: str) -> str:
@@ -3926,10 +3948,27 @@ echo "open exit=$? — klaar" >> "$LOG"
             threading.Thread(target=_do_show, daemon=True).start()
 
         def _remove_license():
-            if tk.messagebox.askyesno(t("wintitle_remove_lic"), t("lic_remove_confirm")):
+            if not tk.messagebox.askyesno(t("wintitle_remove_lic"), t("lic_remove_confirm")):
+                return
+            def _done():
                 _license_delete()
                 self._license_expiry = None
                 _show_license_dialog(message=t("lic_removed_msg"), block=True)
+            token = _license_load().get('token')
+            if not token:
+                _done()   # nooit online geactiveerd → niets vrij te geven
+                return
+            # Eerst online vrijgeven, zodat activeren op een andere computer lukt
+            self.root.config(cursor="watch")
+            def _bg():
+                released = _deactivate_online(token)
+                def _finish():
+                    self.root.config(cursor="")
+                    if released or tk.messagebox.askyesno(t("wintitle_remove_lic"),
+                                                          t("lic_release_offline")):
+                        _done()
+                self.root.after(0, _finish)
+            threading.Thread(target=_bg, daemon=True).start()
 
         # ── Verkochte licenties beheren ──────────────────────────────────────
         _MGR_TOKEN_FILE = _LIC_DIR / "mgr_token"
